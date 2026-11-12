@@ -118,7 +118,7 @@ claude-plays-doom/
 ### Phase 0: Repo & pipeline
 - [x] `gh repo create claude-plays-doom --public` (ask me before making it public; private is fine to start), pnpm monorepo, GPL-2.0 LICENSE, NOTICE, README stub, CLAUDE.md with conventions.
 - [x] Next.js app deployed to Vercel from the GitHub repo (preview deploys on PRs).
-- [ ] Upstash Redis added via Vercel Marketplace; env vars pulled with `vercel env pull`. *(blocked: Upstash Marketplace terms must be accepted in the browser)*
+- [x] Upstash Redis added via Vercel Marketplace; env vars pulled with `vercel env pull`.
 - [x] MCP Apps smoke test in claude.ai (web + desktop): `doom_smoke` renders the inline viewer; its buttons call the app-only `doom_smoke_frame`.
 - [x] CI: install emsdk, build the engine, run tests.
 - **Done when:** a hello-world page is live on the Vercel URL and CI is green.
@@ -135,10 +135,10 @@ claude-plays-doom/
 - **Done when:** I can play E1M1 at `<vercel-url>/play` on desktop and mobile browsers.
 
 ### Phase 3: MCP server (text + image, no UI yet)
-- [ ] `/api/mcp` with `doom_new_game`, `doom_act`, `doom_turn`, `doom_observe`; Redis sessions; replay; limits.
-- [ ] Observation builder (PNG + structured state, perception modes).
-- [ ] Verify with MCP Inspector, then with Claude Code (`claude mcp add --transport http doom <url>/api/mcp`): Claude can walk E1M1 and shoot something.
-- [ ] Log per call: replay tics, replay ms, total ms, response size.
+- [x] `/api/mcp` with `doom_new_game`, `doom_act`, `doom_turn`, `doom_observe`; Redis sessions; replay; limits.
+- [x] Observation builder (PNG + structured state, perception modes).
+- [ ] *(protocol and latency verified with a JSON-RPC client and `scripts/mcp-bot.ts`; a Claude-driven run is still to do)* Verify with MCP Inspector, then with Claude Code (`claude mcp add --transport http doom <url>/api/mcp`): Claude can walk E1M1 and shoot something.
+- [x] Log per call: replay tics, replay ms, total ms, response size.
 - **Done when:** Claude Code plays 30+ actions in a row with p95 tool latency < 2 s.
 
 ### Phase 4: MCP App viewer
@@ -219,6 +219,30 @@ claude-plays-doom/
   - Production timings: cold call ~1.8 s round trip (boot ~450–600 ms); warm ~0.65 s round trip (boot 66–145 ms, server total ~180–270 ms).
 - **Viewer.** A single-file Vite build (`@modelcontextprotocol/ext-apps/app-with-deps`, 524 KB). It shows a diagnostics panel: which image-decode path the host CSP allows, `callServerTool` latency, and host context.
 - **CI.** Green in ~1m40s. The Linux emsdk 7.0.0 rebuild yields byte-identical `doom.mjs` glue; determinism tests pass on Linux.
+
+### Phase 3 results
+- **Upstash.** `doom-player-sessions`, free plan, connected to all environments (`KV_REST_API_URL` / `KV_REST_API_TOKEN`).
+- **Sessions.** The JSON session is the TicStep log plus captions and a version. Saves go through an atomic Lua compare-and-set, so a stale concurrent write fails with "call doom_observe". The TTL is 24 h. An in-memory store is the fallback when Redis isn't configured (local tests).
+- **Engine cache.** Warm engines are *checked out* while a call uses them and checked back in only after a successful save, so two concurrent calls can never share a mutating engine. `DOOM_ENGINE_CACHE=0` disables the cache. A test proves that cold replay equals the warm state.
+- **Tools.**
+  - `doom_new_game` renders the viewer.
+  - `doom_act`, `doom_turn` and `doom_observe` return a 640×400 PNG and/or JSON, by perception mode.
+  - `doom_frame` (`visibility: ["app"]`) returns a 1× PNG, HUD and captions. It returns early when `since_version` is unchanged.
+  - The server `instructions` carry the play guide.
+- **Observation.**
+  - Enemies are filtered by line of sight. Each has distance, relative angle, `on_screen` (±45°) and `in_crosshair` (angular half-width from the mobj radius, which the engine now exports).
+  - Also included: nearby items, barrels, and events diffed from player state (damage plus direction, kills, pickups, weapons, keys, death, level complete, distance moved).
+  - Hints are added for death, level complete and aiming.
+- **Limits.** 8 steps / 105 tics per call; 30k tics per session; 300 requests/min/IP (Upstash ratelimit).
+- **Production latency** (scripted bot, 41 calls, timed from a laptop):
+
+  | Perception | p50 | p95 | Max |
+  |---|---|---|---|
+  | `both` | 292 ms | 497 ms | 2.05 s (cold) |
+  | `state` | 148 ms | 209 ms | 316 ms |
+
+  The same game outcome as the local run, so the session is deterministic across environments.
+- **Architecture explainer** (private artifact): https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool
