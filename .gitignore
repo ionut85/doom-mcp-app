@@ -12,3 +12,4 @@ dist-ui/
 apps/web/ui-dist/
 *.tsbuildinfo
 apps/web/public/doom/
+apps/web/next-env.d.ts
