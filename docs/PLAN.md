@@ -131,7 +131,7 @@ claude-plays-doom/
 - **Done when:** the CLI writes a correct E1M1 frame after scripted moves, and the determinism test passes.
 
 ### Phase 2: DOOM on the web (human play)
-- [ ] `/play` page: the same wasm in the browser, 35 Hz loop driven by `requestAnimationFrame`, keyboard + touch controls, audio optional (skip for v1).
+- [x] `/play` page: the same wasm in the browser, 35 Hz loop driven by `requestAnimationFrame`, keyboard + touch controls, audio optional (skip for v1).
 - **Done when:** I can play E1M1 at `<vercel-url>/play` on desktop and mobile browsers.
 
 ### Phase 3: MCP server (text + image, no UI yet)
@@ -249,6 +249,18 @@ claude-plays-doom/
 
   The same game outcome as the local run, so the session is deterministic across environments.
 - **Architecture explainer** (private artifact): https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1
+
+### Phase 2 results
+- **`/play`** runs the same wasm in the browser.
+  - The loop is fixed-step at 35 Hz on `requestAnimationFrame`, capped at 4 tics per frame, and pauses when the tab is hidden.
+  - Desktop: keyboard and mouse (pointer lock to aim, click to fire, right-click to use).
+  - Touch: the left half is a movement stick, dragging on the right half turns, plus FIRE / USE / WPN buttons. The controls sit in a pad under the screen in portrait and float over it in landscape.
+  - Skill and map selectors, an always-run toggle, pause and restart.
+- **Reusable modules.** Input and loop live in `apps/web/lib/play/` (framework-agnostic), so the Phase 4 viewer can reuse them.
+- **Assets.** `scripts/web-assets.mjs` publishes content-hashed glue, wasm and a gzipped WAD (28.8 MB → 10.2 MB, inflated with `DecompressionStream`) to `public/doom/`, plus a `manifest.json`.
+  - Hashed files are cached as immutable; the manifest always revalidates.
+  - Stripping sound and music would only save ~3 MB, so the WAD ships unmodified to keep determinism safe.
+- **Cross-host determinism verified.** `/play?selftest=1` replays the seeded log from `doom-core/selftest.ts`, and the browser gives the same state and frame hashes as Node. The hashes are pinned in a Node test, so CI catches drift.
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool

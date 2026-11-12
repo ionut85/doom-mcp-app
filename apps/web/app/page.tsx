@@ -6,6 +6,9 @@ export default function Home() {
       <p>
         MCP endpoint: <code>/api/mcp</code> (Streamable HTTP). Add it as a custom connector in Claude.
       </p>
+      <p>
+        <a href="/play" style={{ color: "#e7a83e" }}>Play it yourself →</a>
+      </p>
       <p style={{ opacity: 0.6, fontSize: 14 }}>
         GPL-2.0. Uses doomgeneric and Freedoom. Not affiliated with id Software.
       </p>

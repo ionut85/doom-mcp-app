@@ -11,6 +11,14 @@ const config: NextConfig = {
   },
   transpilePackages: ["@doom-player/doom-core"],
   // The engine glue is loaded at runtime from engine/dist (see lib/assets.ts).
+
+  // Browser runtime for /play (scripts/web-assets.mjs): hashed files never change.
+  async headers() {
+    return [
+      { source: "/doom/manifest.json", headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }] },
+      { source: "/doom/:file((?!manifest).*)", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+    ];
+  },
 };
 
 export default config;

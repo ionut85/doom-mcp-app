@@ -10,7 +10,7 @@
     "dev": "pnpm assets && next dev",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "assets": "bash ../../scripts/get-wad.sh && pnpm build:ui"
+    "assets": "bash ../../scripts/get-wad.sh && node ../../scripts/web-assets.mjs && pnpm build:ui"
   },
   "dependencies": {
     "@doom-player/doom-core": "workspace:*",

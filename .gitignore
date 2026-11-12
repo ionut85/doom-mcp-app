@@ -11,3 +11,4 @@ dist-ui/
 .DS_Store
 apps/web/ui-dist/
 *.tsbuildinfo
+apps/web/public/doom/
