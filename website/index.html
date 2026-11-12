@@ -31,8 +31,11 @@ nav .wrap{display:flex;align-items:center;justify-content:space-between;height:5
 nav .links{display:flex;gap:20px;font-size:15px} nav .links a{color:var(--muted)} nav .links a:hover{color:var(--text);text-decoration:none}
 @media(max-width:640px){nav .links a.hide-sm{display:none}}
 
-.hero{padding:64px 0 40px;display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center}
-@media(max-width:880px){.hero{grid-template-columns:1fr;padding-top:44px}}
+.hero{padding:56px 20px 48px;display:grid;grid-template-columns:1fr;gap:44px}
+.hero-text{display:grid;grid-template-columns:1.1fr 1fr;gap:20px 48px;align-items:end}
+.hero-text .badge{grid-column:1/-1;justify-self:start}
+.hero-text h1{margin:0}
+@media(max-width:880px){.hero{padding-top:40px}.hero-text{grid-template-columns:1fr}}
 .badge{display:inline-flex;gap:8px;align-items:center;font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--orange);border:1px solid #4a2d1a;background:#1c120b;padding:6px 10px;border-radius:999px}
 .badge i{width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 10px var(--orange)}
 h1{font-size:clamp(40px,6.4vw,72px);line-height:1.02;letter-spacing:-.03em;margin:18px 0 18px}
@@ -49,7 +52,7 @@ h1 em{font-style:normal;color:var(--red)}
 .lbl{display:inline-flex;align-items:center;gap:8px;font:12px "Silkscreen",var(--mono);color:var(--text);text-transform:uppercase}
 .lbl b{display:grid;place-items:center;width:20px;height:20px;background:var(--red);color:#fff;font-weight:400}
 .lbl span{color:var(--muted)}
-.stack{display:flex;flex-direction:column;align-items:stretch}
+.stack{display:flex;flex-direction:column;align-items:stretch;max-width:980px;width:100%;margin:0 auto}
 .mac-lbl{margin:0 0 10px 6px}
 .mac{position:relative}
 .bezel{background:#1d1d21;padding:14px 14px 18px;border:4px solid #3a3a41;
@@ -65,12 +68,16 @@ h1 em{font-style:normal;color:var(--red)}
 .bar i:nth-child(1){background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
 .bar .t{flex:1;text-align:center;font:11px "Silkscreen",var(--mono);color:var(--muted);margin-right:33px}
 .client-lbl{padding:10px 12px 0}
-.body{padding:10px 12px 12px}
+.body{padding:10px 12px 12px;display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.6fr);gap:14px;align-items:start}
+.chatcol{display:flex;flex-direction:column;gap:0}
+.reply{font-size:13px;color:var(--muted);line-height:1.5;margin-top:2px}
+.panel-h{font:10px "Silkscreen",var(--mono);color:var(--dim);text-transform:uppercase;margin:0 0 6px;display:flex;justify-content:space-between}
+@media(max-width:720px){.body{grid-template-columns:1fr}}
 .msg-user{margin-left:auto;max-width:88%;background:#26262b;padding:8px 12px;font-size:13.5px;display:flex;gap:8px;align-items:flex-start;line-height:1.45}
 .mic{flex:none;width:18px;height:18px;background:var(--red);display:grid;place-items:center;margin-top:1px}
 .mic svg{width:10px;height:10px}
 .calls{margin:10px 0 8px;display:flex;flex-direction:column;gap:5px}
-.call{font:11.5px var(--mono);color:var(--muted);background:#0f0f11;border:1px solid var(--line);padding:5px 8px;overflow-x:auto;white-space:nowrap}
+.call{font:11.5px/1.5 var(--mono);color:var(--muted);background:#0f0f11;border:1px solid var(--line);padding:5px 8px;overflow-wrap:anywhere}
 .call b{color:var(--green);font-weight:600}
 .viewer{overflow:hidden;border:2px solid var(--orange);position:relative}
 .viewer .cap{position:absolute;left:8px;bottom:18%;font:11px var(--mono);background:rgba(0,0,0,.75);padding:3px 7px;color:#fff}
@@ -91,7 +98,7 @@ h1 em{font-style:normal;color:var(--red)}
 .tl.l{right:calc(50% + 60px);color:var(--orange);text-align:right}
 .tl.r{left:calc(50% + 60px);color:var(--green)}
 .tl small{display:block;color:var(--dim);font-size:10px}
-.server{background:#121215;border:4px solid #3a3a41;padding:14px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;
+.server{width:100%;max-width:640px;margin:0 auto;background:#121215;border:4px solid #3a3a41;padding:14px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;
   clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,8px calc(100% - 8px),0 calc(100% - 8px))}
 .rack{display:grid;gap:5px}
 .rack div{width:64px;height:14px;background:#26262b;border:2px solid #34343a;position:relative}
@@ -103,7 +110,7 @@ h1 em{font-style:normal;color:var(--red)}
 .srv p code{color:var(--text);font-size:12px}
 @media (prefers-reduced-motion:reduce){.pk,.rack div:after{animation:none}}
 @media(max-width:520px){.tl{display:none}}
-.footnote{font-size:12.5px;color:var(--dim);margin-top:10px}
+.footnote{font-size:12.5px;color:var(--dim);margin:12px auto 0;text-align:center;max-width:640px}
 
 section{padding:72px 0;border-top:1px solid var(--line)}
 .eyebrow{font:600 12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red);margin-bottom:10px}
@@ -167,13 +174,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 </div></nav>
 
 <header class="wrap hero">
-  <div>
+  <div class="hero-text">
     <span class="badge"><i></i>Work in progress · AI Tinkerers demo</span>
     <h1>DOOM, inside ChatGPT. <em>By voice.</em></h1>
+    <div>
     <p class="lead">An experiment in how far MCP Apps can go. DOOM already runs on a server as WebAssembly and a model can play it through MCP tool calls. Next: the game inside ChatGPT, steered by your voice.</p>
     <div class="ctas">
       <a class="btn primary" href="https://github.com/ionut85/doom-mcp-app">View on GitHub</a>
       <a class="btn" href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a>
+    </div>
     </div>
   </div>
 
@@ -186,18 +195,23 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
           <div class="bar"><i></i><i></i><i></i><span class="t">ChatGPT</span></div>
           <div class="lbl client-lbl"><b>2</b>Client <span>ChatGPT for macOS</span></div>
           <div class="body">
-            <div class="msg-user">
-              <span class="mic"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12h-2Z"/></svg></span>
-              <span>"Keep going down the corridor and shoot anything that moves."</span>
+            <div class="chatcol">
+              <div class="msg-user">
+                <span class="mic"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12h-2Z"/></svg></span>
+                <span>"Keep going down the corridor and shoot anything that moves."</span>
+              </div>
+              <div class="calls">
+                <div class="call"><b>doom_act</b>({ steps: [{ actions: ["forward", "run"], tics: 10 }] })</div>
+                <div class="call">&rarr; enemies: [{ type: "zombieman", distance: 315, angle: -4.8 }]</div>
+              </div>
+              <div class="reply">Zombie ahead, 5&deg; to the left. Turning to face it, then firing.</div>
             </div>
-            <div class="calls">
-              <div class="call"><b>doom_act</b>({ steps: [{ actions: ["forward", "run"], tics: 10 }] })</div>
-              <div class="call">&rarr; enemies: [{ type: "zombieman", distance: 315, angle: -4.8 }]</div>
-            </div>
-            <div class="viewer">
-              <img class="pix" src="img/spot.webp" alt="DOOM frame from the engine: a zombie appears at the end of a corridor" width="640" height="400">
-              <span class="tag">inline MCP App</span>
-              <span class="cap">Zombie ahead, 5&deg; left. Turning to face it.</span>
+            <div>
+              <div class="panel-h"><span>DOOM &middot; app panel</span><span>E1M1</span></div>
+              <div class="viewer">
+                <img class="pix" src="img/spot.webp" alt="DOOM frame from the engine: a zombie appears at the end of a corridor" width="640" height="400">
+                <span class="tag">inline MCP App</span>
+              </div>
             </div>
           </div>
         </div>
