@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>doom-mcp-app: DOOM inside ChatGPT, by voice</title>
+<meta name="description" content="An experiment in how far MCP Apps can go: DOOM runs on a server as WebAssembly, the model plays it through tool calls, and you direct it by voice.">
+<meta property="og:title" content="doom-mcp-app: DOOM inside ChatGPT, by voice">
+<meta property="og:description" content="An experiment in how far MCP Apps can go.">
+<meta name="twitter:card" content="summary">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Silkscreen&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0b0c; --bg2:#141416; --line:#26262a; --text:#ecebe8; --muted:#a19f9a; --dim:#6f6d69;
+  --red:#e0352b; --orange:#ff8a3d; --green:#3ddc84; --mono:"JetBrains Mono",ui-monospace,monospace;
+  --sans:"Space Grotesk",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:17px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--orange);text-decoration:none} a:hover{text-decoration:underline}
+img{display:block;max-width:100%}
+.pix{image-rendering:pixelated}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+code,.mono{font-family:var(--mono);font-size:.86em}
+nav{position:sticky;top:0;z-index:5;background:rgba(11,11,12,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:56px}
+.logo{font-family:var(--mono);font-weight:600;color:var(--text)} .logo b{color:var(--red)}
+nav .links{display:flex;gap:20px;font-size:15px} nav .links a{color:var(--muted)} nav .links a:hover{color:var(--text);text-decoration:none}
+@media(max-width:640px){nav .links a.hide-sm{display:none}}
+
+.hero{padding:64px 0 40px;display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center}
+@media(max-width:880px){.hero{grid-template-columns:1fr;padding-top:44px}}
+.badge{display:inline-flex;gap:8px;align-items:center;font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--orange);border:1px solid #4a2d1a;background:#1c120b;padding:6px 10px;border-radius:999px}
+.badge i{width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 10px var(--orange)}
+h1{font-size:clamp(40px,6.4vw,72px);line-height:1.02;letter-spacing:-.03em;margin:18px 0 18px}
+h1 em{font-style:normal;color:var(--red)}
+.lead{font-size:20px;color:var(--muted);max-width:34em;margin:0 0 28px}
+.ctas{display:flex;flex-wrap:wrap;gap:12px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:10px;font-weight:600;font-size:16px;border:1px solid var(--line);color:var(--text);background:var(--bg2)}
+.btn:hover{text-decoration:none;border-color:#3a3a40}
+.btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+.btn.primary:hover{background:#c92c23}
+
+/* inception hero: host -> client -> tunnel -> server */
+.px{font-family:"Silkscreen",var(--mono);letter-spacing:.02em}
+.lbl{display:inline-flex;align-items:center;gap:8px;font:12px "Silkscreen",var(--mono);color:var(--text);text-transform:uppercase}
+.lbl b{display:grid;place-items:center;width:20px;height:20px;background:var(--red);color:#fff;font-weight:400}
+.lbl span{color:var(--muted)}
+.stack{display:flex;flex-direction:column;align-items:stretch}
+.mac-lbl{margin:0 0 10px 6px}
+.mac{position:relative}
+.bezel{background:#1d1d21;padding:14px 14px 18px;border:4px solid #3a3a41;
+  clip-path:polygon(0 8px,8px 8px,8px 0,calc(100% - 8px) 0,calc(100% - 8px) 8px,100% 8px,100% 100%,0 100%);
+  box-shadow:inset 0 0 0 4px #121215}
+.cam{width:8px;height:8px;background:#3a3a41;margin:-8px auto 8px}
+.base{height:18px;margin:0 -22px;background:#3a3a41;
+  clip-path:polygon(0 0,100% 0,calc(100% - 16px) 100%,16px 100%);position:relative}
+.base:after{content:"";position:absolute;left:50%;top:0;width:72px;height:6px;transform:translateX(-50%);background:#26262b}
+.win{background:#17171a;border:3px solid #2e2e34}
+.bar{display:flex;align-items:center;gap:6px;padding:7px 10px;background:#232328;border-bottom:3px solid #2e2e34}
+.bar i{width:9px;height:9px;display:block}
+.bar i:nth-child(1){background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
+.bar .t{flex:1;text-align:center;font:11px "Silkscreen",var(--mono);color:var(--muted);margin-right:33px}
+.client-lbl{padding:10px 12px 0}
+.body{padding:10px 12px 12px}
+.msg-user{margin-left:auto;max-width:88%;background:#26262b;padding:8px 12px;font-size:13.5px;display:flex;gap:8px;align-items:flex-start;line-height:1.45}
+.mic{flex:none;width:18px;height:18px;background:var(--red);display:grid;place-items:center;margin-top:1px}
+.mic svg{width:10px;height:10px}
+.calls{margin:10px 0 8px;display:flex;flex-direction:column;gap:5px}
+.call{font:11.5px var(--mono);color:var(--muted);background:#0f0f11;border:1px solid var(--line);padding:5px 8px;overflow-x:auto;white-space:nowrap}
+.call b{color:var(--green);font-weight:600}
+.viewer{overflow:hidden;border:2px solid var(--orange);position:relative}
+.viewer .cap{position:absolute;left:8px;bottom:18%;font:11px var(--mono);background:rgba(0,0,0,.75);padding:3px 7px;color:#fff}
+.viewer .tag{position:absolute;right:8px;top:8px;font:10px "Silkscreen",var(--mono);background:rgba(0,0,0,.75);padding:3px 6px;color:var(--orange)}
+.tunnel{position:relative;height:118px;margin:0 auto;width:100%;display:flex;justify-content:center}
+.pipe{position:relative;width:96px;height:100%;
+  background:repeating-linear-gradient(180deg,#141418 0 10px,#1b1b20 10px 20px);
+  border-left:4px solid #3a3a41;border-right:4px solid #3a3a41}
+.pipe:before,.pipe:after{content:"";position:absolute;top:0;bottom:0;width:2px;background:repeating-linear-gradient(180deg,#3a3a41 0 6px,transparent 6px 12px)}
+.pipe:before{left:30px}.pipe:after{right:30px}
+.pk{position:absolute;width:10px;height:10px}
+.pk.dn{left:12px;background:var(--orange);animation:dn 1.6s steps(12) infinite}
+.pk.up{right:12px;background:var(--green);animation:up 1.6s steps(12) infinite .8s}
+.pk.dn.b{animation-delay:.8s}.pk.up.b{animation-delay:0s}
+@keyframes dn{from{top:-10px}to{top:100%}}
+@keyframes up{from{top:100%}to{top:-10px}}
+.tl{position:absolute;top:50%;transform:translateY(-50%);font:11px var(--mono);white-space:nowrap}
+.tl.l{right:calc(50% + 60px);color:var(--orange);text-align:right}
+.tl.r{left:calc(50% + 60px);color:var(--green)}
+.tl small{display:block;color:var(--dim);font-size:10px}
+.server{background:#121215;border:4px solid #3a3a41;padding:14px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,8px calc(100% - 8px),0 calc(100% - 8px))}
+.rack{display:grid;gap:5px}
+.rack div{width:64px;height:14px;background:#26262b;border:2px solid #34343a;position:relative}
+.rack div:after{content:"";position:absolute;right:5px;top:3px;width:5px;height:5px;background:var(--green);animation:blink 1.1s steps(2) infinite}
+.rack div:nth-child(2):after{animation-delay:.35s;background:var(--orange)}.rack div:nth-child(3):after{animation-delay:.7s}
+@keyframes blink{50%{opacity:.15}}
+.srv .lbl{margin-bottom:6px}
+.srv p{margin:0;font:12px/1.6 var(--mono);color:var(--muted)}
+.srv p code{color:var(--text);font-size:12px}
+@media (prefers-reduced-motion:reduce){.pk,.rack div:after{animation:none}}
+@media(max-width:520px){.tl{display:none}}
+.footnote{font-size:12.5px;color:var(--dim);margin-top:10px}
+
+section{padding:72px 0;border-top:1px solid var(--line)}
+.eyebrow{font:600 12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red);margin-bottom:10px}
+h2{font-size:clamp(28px,3.6vw,40px);letter-spacing:-.02em;line-height:1.1;margin:0 0 14px}
+.sub{color:var(--muted);max-width:44em;margin:0 0 36px}
+
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;counter-reset:s}
+@media(max-width:880px){.flow{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.flow{grid-template-columns:1fr}}
+.step{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:20px;position:relative}
+.step:before{counter-increment:s;content:counter(s,decimal-leading-zero);font:600 13px var(--mono);color:var(--red)}
+.step h3{margin:8px 0 6px;font-size:18px} .step p{margin:0;color:var(--muted);font-size:15px}
+
+.ideas{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.ideas{grid-template-columns:1fr}}
+.idea{border:1px solid var(--line);border-radius:14px;padding:22px;background:linear-gradient(180deg,#141416,#101012)}
+.idea h3{margin:0 0 6px;font-size:19px} .idea p{margin:0;color:var(--muted);font-size:15.5px}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:880px){.stats{grid-template-columns:1fr 1fr}}
+.stat{border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--bg2)}
+.stat .n{font:600 34px var(--mono);letter-spacing:-.02em;color:var(--text)} .stat .n small{font-size:16px;color:var(--muted)}
+.stat .l{color:var(--muted);font-size:14.5px;margin-top:4px}
+.note{color:var(--dim);font-size:13.5px;margin-top:14px}
+
+
+.split{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+@media(max-width:880px){.split{grid-template-columns:1fr}}
+pre{margin:0;background:#0f0f11;border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;font:13px/1.55 var(--mono);color:#cfcdc8}
+.k{color:#8ab4ff}.s{color:#f2b36b}.num{color:var(--green)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td{padding:10px 0;border-bottom:1px solid var(--line);vertical-align:top} td:first-child{width:38%;padding-right:14px}
+td code{color:var(--green)}
+
+.qs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.qs{grid-template-columns:1fr}}
+.q{border:1px dashed #3a3a40;border-radius:14px;padding:20px}
+.q h3{margin:0 0 6px;font-size:18px} .q p{margin:0;color:var(--muted);font-size:15px}
+
+.status{list-style:none;padding:0;margin:0;display:grid;gap:10px;max-width:720px}
+.status li{display:flex;gap:12px;align-items:baseline;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--bg2)}
+.dot{flex:none;font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px}
+.done{color:#0b0b0c;background:var(--green)} .now{color:#0b0b0c;background:var(--orange)} .next{color:var(--muted);border:1px solid #3a3a40}
+
+.try{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:28px}
+.try ol{margin:0;padding-left:20px;color:var(--muted)} .try li{margin:6px 0} .try li b{color:var(--text)}
+
+footer{border-top:1px solid var(--line);padding:36px 0 48px;color:var(--dim);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="logo" href="#">doom<b>-</b>mcp<b>-</b>app</a>
+  <div class="links">
+    <a class="hide-sm" href="#how">How it works</a>
+    <a class="hide-sm" href="#limits">What we're testing</a>
+    <a href="https://github.com/ionut85/doom-mcp-app">GitHub</a>
+  </div>
+</div></nav>
+
+<header class="wrap hero">
+  <div>
+    <span class="badge"><i></i>Work in progress · AI Tinkerers demo</span>
+    <h1>DOOM, inside ChatGPT. <em>By voice.</em></h1>
+    <p class="lead">An experiment in how far MCP Apps can go. DOOM already runs on a server as WebAssembly and a model can play it through MCP tool calls. Next: the game inside ChatGPT, steered by your voice.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://github.com/ionut85/doom-mcp-app">View on GitHub</a>
+      <a class="btn" href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a>
+    </div>
+  </div>
+
+  <div class="stack" aria-label="Illustration: your Mac runs ChatGPT, ChatGPT shows the game, the game runs on a server on Vercel">
+    <div class="lbl mac-lbl"><b>1</b>Host <span>your Mac</span></div>
+    <div class="mac">
+      <div class="bezel">
+        <div class="cam"></div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span class="t">ChatGPT</span></div>
+          <div class="lbl client-lbl"><b>2</b>Client <span>ChatGPT for macOS</span></div>
+          <div class="body">
+            <div class="msg-user">
+              <span class="mic"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12h-2Z"/></svg></span>
+              <span>"Keep going down the corridor and shoot anything that moves."</span>
+            </div>
+            <div class="calls">
+              <div class="call"><b>doom_act</b>({ steps: [{ actions: ["forward", "run"], tics: 10 }] })</div>
+              <div class="call">&rarr; enemies: [{ type: "zombieman", distance: 315, angle: -4.8 }]</div>
+            </div>
+            <div class="viewer">
+              <img class="pix" src="img/spot.webp" alt="DOOM frame from the engine: a zombie appears at the end of a corridor" width="640" height="400">
+              <span class="tag">inline MCP App</span>
+              <span class="cap">Zombie ahead, 5&deg; left. Turning to face it.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="base"></div>
+    </div>
+    <div class="tunnel" aria-hidden="true">
+      <div class="tl l">doom_act / doom_turn<small>tool calls over MCP</small></div>
+      <div class="pipe"><span class="pk dn"></span><span class="pk dn b"></span><span class="pk up"></span><span class="pk up b"></span></div>
+      <div class="tl r">frame + state<small>PNG and JSON back</small></div>
+    </div>
+    <div class="server">
+      <div class="rack"><div></div><div></div><div></div></div>
+      <div class="srv">
+        <div class="lbl"><b>3</b>Server <span>DOOM on Vercel</span></div>
+        <p><code>doomgeneric</code> &rarr; WebAssembly, 380 KB. Frozen between calls, replayed from its input log.</p>
+      </div>
+    </div>
+    <p class="footnote">Illustration. The frame, distance and angle are real output from the engine (Freedoom E1M1); the Mac and ChatGPT window around them are a mock-up.</p>
+  </div>
+</header>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">How it works</div>
+  <h2>The game only moves when the model acts.</h2>
+  <p class="sub">DOOM runs at 35 tics a second; a chat model thinks in seconds. So the game is frozen between tool calls, and every call advances an exact number of tics.</p>
+  <div class="flow">
+    <div class="step"><h3>You speak</h3><p>"Go through the door on the left and kill the imp." The model turns intent into game actions.</p></div>
+    <div class="step"><h3>It calls a tool</h3><p><code>doom_act</code>, <code>doom_turn</code> or <code>doom_observe</code> on an MCP server over Streamable HTTP.</p></div>
+    <div class="step"><h3>The server steps DOOM</h3><p>It rebuilds the session from its input log, applies the steps, then freezes the game again.</p></div>
+    <div class="step"><h3>It sees the result</h3><p>A screenshot, structured state, or both, back to the model. The inline viewer updates in the chat.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">Design</div>
+  <h2>Four ideas make it work.</h2>
+  <p class="sub">Built on doomgeneric compiled to WebAssembly, Next.js on Vercel and Upstash Redis.</p>
+  <div class="ideas">
+    <div class="idea"><h3>Virtual time</h3><p>The engine's clock only advances on a tool call. The model can take as long as it likes to think, and nothing happens behind its back.</p></div>
+    <div class="idea"><h3>Deterministic replay</h3><p>Serverless functions don't keep a game in memory. A session is just its list of inputs; any instance rebuilds the exact game by replaying it, like a classic .lmp demo.</p></div>
+    <div class="idea"><h3>Exact controls</h3><p>Inputs go straight into DOOM's per-tic command through a 3-line patch, so "turn 37.5° right" is exact. Aiming by an enemy's relative angle just works.</p></div>
+    <div class="idea"><h3>Perception modes</h3><p>Each action returns a 640×400 screenshot, structured state (enemies with distance, angle and an in-crosshair flag), or both. We want to compare how each plays.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">Measured</div>
+  <h2>Fast enough to feel like a game.</h2>
+  <div class="stats">
+    <div class="stat"><div class="n">380<small> KB</small></div><div class="l">The whole engine, as WebAssembly</div></div>
+    <div class="stat"><div class="n">~14<small> ms</small></div><div class="l">To replay 10,000 tics (about 5 minutes of play), warm</div></div>
+    <div class="stat"><div class="n">292<small> ms</small></div><div class="l">Median per action with a screenshot (p95 497 ms)</div></div>
+    <div class="stat"><div class="n">148<small> ms</small></div><div class="l">Median per action, state only (p95 209 ms)</div></div>
+  </div>
+  <p class="note">Production numbers timed from a laptop on 12 Nov 2026, over 41-call scripted bot runs. Worst case is a cold start on the first call, about 2.1 s.</p>
+</div></section>
+
+<section><div class="wrap split">
+  <div>
+    <div class="eyebrow">The tools</div>
+    <h2>Five tools, one of them hidden.</h2>
+    <table>
+      <tr><td><code>doom_new_game</code></td><td>Starts a game and opens the inline viewer.</td></tr>
+      <tr><td><code>doom_act</code></td><td>Holds actions for a number of tics, up to 8 steps per call, with an optional caption.</td></tr>
+      <tr><td><code>doom_turn</code></td><td>Turns by exact degrees, the same convention as enemy angles.</td></tr>
+      <tr><td><code>doom_observe</code></td><td>Looks without letting time pass.</td></tr>
+      <tr><td><code>doom_frame</code></td><td>For the viewer only, hidden from the model. Polls the latest frame and captions.</td></tr>
+    </table>
+  </div>
+  <div>
+    <div class="eyebrow">What the model sees</div>
+    <pre>{
+  <span class="k">"status"</span>: <span class="s">"alive"</span>, <span class="k">"health"</span>: <span class="num">87</span>, <span class="k">"weapon"</span>: <span class="s">"pistol"</span>,
+  <span class="k">"ammo"</span>: <span class="num">42</span>, <span class="k">"kills"</span>: <span class="s">"3/29"</span>,
+  <span class="k">"enemies"</span>: [{ <span class="k">"type"</span>: <span class="s">"imp"</span>, <span class="k">"distance"</span>: <span class="num">412</span>,
+    <span class="k">"angle"</span>: <span class="num">-12.5</span>, <span class="k">"in_crosshair"</span>: <span class="num">false</span> }],
+  <span class="k">"events"</span>: [<span class="s">"took 8 damage from 30° left"</span>,
+             <span class="s">"killed 1 enemy"</span>],
+  <span class="k">"hint"</span>: <span class="s">"Nearest enemy is 12° left; doom_turn by its angle to aim."</span>
+}</pre>
+  </div>
+</div></section>
+
+<section id="limits"><div class="wrap">
+  <div class="eyebrow">What we're testing</div>
+  <h2>Where are the limits of MCP Apps?</h2>
+  <p class="sub">MCP Apps landed in ChatGPT not long ago and more recently in Claude. A fast, visual, real-time-ish game is a good way to find out what they can really do.</p>
+  <div class="qs">
+    <div class="q"><h3>Inline rendering</h3><p>Can a live game view run inside the chat in both ChatGPT and Claude, given each host's sandboxing and CSP rules?</p></div>
+    <div class="q"><h3>Voice to tool calls</h3><p>Can you direct the game out loud, through ChatGPT voice or dictation, and have the model turn intent into precise actions fast enough to be fun?</p></div>
+    <div class="q"><h3>Vision vs. state</h3><p>Does the model play better from pixels, from structured state, or from both?</p></div>
+    <div class="q"><h3>Long sessions</h3><p>How far does a model get before per-turn tool-call limits stop a run?</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">Status</div>
+  <h2>Where it stands.</h2>
+  <ul class="status">
+    <li><span class="dot done">Done</span><span>Headless engine with virtual time, passing determinism tests</span></li>
+    <li><span class="dot done">Done</span><span>MCP game server with sessions, replay, observations and limits, live on Vercel</span></li>
+    <li><span class="dot now">Now</span><span>Inline MCP App viewer in ChatGPT and Claude</span></li>
+    <li><span class="dot next">Next</span><span>Voice-directed play inside ChatGPT</span></li>
+    <li><span class="dot next">Next</span><span>Play-quality evals for each perception mode</span></li>
+  </ul>
+</div></section>
+
+<section><div class="wrap">
+  <div class="try">
+    <div class="eyebrow">Try it</div>
+    <h2 style="margin-bottom:16px">Add it as a connector.</h2>
+    <ol>
+      <li>Add a custom connector with the URL <code>https://doom-player.vercel.app/api/mcp</code>. No auth needed.</li>
+      <li>In a new chat, ask: <b>"Start a game of DOOM and play E1M1. Caption each move."</b></li>
+      <li>Or from Claude Code: <code>claude mcp add --transport http doom https://doom-player.vercel.app/api/mcp</code></li>
+    </ol>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <span>An experiment by Ionut and Eros at <a href="https://hypd.ai">HYPD</a>. GPL-2.0, built on doomgeneric and Freedoom.</span>
+  <span>DOOM is a trademark of id Software. Not affiliated with id Software, ZeniMax or Bethesda.</span>
+</div></footer>
+
+</body>
+</html>
