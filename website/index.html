@@ -323,11 +323,13 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <section><div class="wrap">
   <div class="try">
     <div class="eyebrow">Try it</div>
-    <h2 style="margin-bottom:16px">Add it as a connector.</h2>
+    <h2 style="margin-bottom:16px">Add it by URL, like any MCP server.</h2>
+    <p style="color:var(--muted);margin:0 0 14px">Remote MCP over Streamable HTTP, no sign-in: <code>https://doom-player.vercel.app/api/mcp</code></p>
     <ol>
-      <li>Add a custom connector with the URL <code>https://doom-player.vercel.app/api/mcp</code>. No auth needed.</li>
-      <li>In a new chat, ask: <b>"Start a game of DOOM and play E1M1. Caption each move."</b></li>
-      <li>Or from Claude Code: <code>claude mcp add --transport http doom https://doom-player.vercel.app/api/mcp</code></li>
+      <li><b>ChatGPT:</b> Plugins, then <b>+</b> and <b>Add custom MCP server</b>. Paste the URL, leave auth off, create it, then type <code>@</code> in a new chat to pick it.</li>
+      <li><b>Claude:</b> Settings, Connectors, <b>Add custom connector</b>, paste the URL.</li>
+      <li><b>Claude Code:</b> <code>claude mcp add --transport http doom https://doom-player.vercel.app/api/mcp</code></li>
+      <li>Then ask: <b>"Start a game of DOOM and play E1M1. Caption each move."</b></li>
     </ol>
   </div>
 </div></section>
