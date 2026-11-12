@@ -4,6 +4,8 @@ Claude plays DOOM inside the Claude app, rendered inline as an MCP App. The game
 
 See [docs/PLAN.md](docs/PLAN.md) for the plan and progress.
 
+Live MCP endpoint: `https://doom-player.vercel.app/api/mcp` (add it as a custom connector in Claude).
+
 ## Quick start (engine)
 
 ```bash

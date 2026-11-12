@@ -179,7 +179,13 @@ claude-plays-doom/
 
 ## 8. Execution log
 
-**Order:** Phase 1 (engine spike) → 0 → 2 / 3 → 4 → 5 → 6. GitHub/Vercel project name: `doom-player` (private).
+**Order:** Phase 1 (engine spike) → 0 → 2 / 3 → 4 → 5 → 6. Vercel project name: `doom-player`.
+
+### Repository
+- **Main repo (public):** https://github.com/ionut85/doom-mcp-app (`origin`).
+- **Backup (private):** `eros902002/doom-player` (`private` remote). `git push` on `origin` pushes to both.
+- **Commit emails** use the GitHub noreply address; history was rewritten once before going public.
+- **Vercel still deploys from the private backup.** Its Git integration can't be switched until the Vercel GitHub app is installed on `ionut85`'s account (only the owner can do that). Then: `vercel git disconnect --yes && vercel git connect https://github.com/ionut85/doom-mcp-app --yes`.
 
 ### Deviations from this plan (checked 2026-11-12)
 - **MCP SDK v2 split.** `mcp-handler@2.4` and `@modelcontextprotocol/ext-apps@2.0.4` need `@modelcontextprotocol/server@^2` and `zod@^4.2`, not `@modelcontextprotocol/sdk` 1.x.
@@ -208,7 +214,7 @@ claude-plays-doom/
 - Not yet verified: determinism across Node vs browser (Phase 2 selftest).
 
 ### Phase 0 results
-- **Repo and deploys.** Private repo `eros902002/doom-player`. The Vercel project `doom-player` (personal team) has root `apps/web`, Node 24 and Fluid compute, and is Git-connected. Production: https://doom-player.vercel.app, MCP endpoint `/api/mcp`.
+- **Repo and deploys.** Started as the private repo `eros902002/doom-player`. Moved on 2026-11-12 to the public repo `ionut85/doom-mcp-app` (see Repository below). The Vercel project `doom-player` (personal team) has root `apps/web`, Node 24 and Fluid compute, and is Git-connected. Production: https://doom-player.vercel.app, MCP endpoint `/api/mcp`.
 - **Vercel needs corepack for pnpm 12.** Set `ENABLE_EXPERIMENTAL_COREPACK=1` (all environments) so the build uses `packageManager: pnpm@12.18.0`. pnpm doesn't run `pre*` scripts, so `build` runs `pnpm assets`: `get-wad.sh` (downloaded at build time, checksum-verified) plus the viewer build.
 - **Bundling.** Turbopack bundled the Emscripten glue even with `serverExternalPackages`, which traced the whole project. Fixed with:
   - a bundler-safe `@doom-player/doom-core/core` entry that takes the module factory;
