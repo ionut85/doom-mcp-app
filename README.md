@@ -1,20 +1,43 @@
 <h1 align="center">DOOM, inside ChatGPT. By voice.</h1>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="Your Mac runs ChatGPT, ChatGPT shows DOOM in an app panel, and the game runs on a server on Vercel" width="820">
+  <img src="docs/images/hero.png" alt="Your Mac runs ChatGPT, ChatGPT shows DOOM in an app panel, and the game runs on a server on Vercel" width="820"><br>
+  <sub><i>Your Mac runs ChatGPT. ChatGPT shows the game in an app panel. DOOM itself runs on a server on Vercel, one tool call at a time.</i></sub>
 </p>
 
 <p align="center">
   <a href="https://doom-mcp.vercel.app"><b>Landing page</b></a> &middot;
-  <a href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a> &middot;
-  <a href="#install">Install</a>
+  <a href="#install"><b>Add it to ChatGPT or Claude</b></a> &middot;
+  <a href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a>
 </p>
 
 An experiment in how far **MCP Apps** can go. DOOM runs headless on a server as WebAssembly, exposed as a remote [MCP](https://modelcontextprotocol.io) server with an inline [MCP App](https://modelcontextprotocol.io/extensions/apps/overview) viewer. The model sees the game (a screenshot, structured state, or both) and plays it through tool calls. The game is frozen between calls, so the model can take as long as it likes to think.
 
-The goal is to play it inside ChatGPT by voice: you say "keep going down the corridor and shoot anything that moves", and the model turns that into game actions.
+The goal: play it inside ChatGPT, by voice.
+
+- **Autonomous:** "Start a game of DOOM and clear E1M1."
+- **Directed:** "Go through the door on the left and kill the imp."
+- **Voice:** say it out loud in ChatGPT and let the model turn it into game actions *(in progress)*.
+- **Human:** play it yourself in the browser *(in progress)*.
+
+**Live MCP endpoint:** `https://doom-player.vercel.app/api/mcp`, see [Install](#install).
 
 > **Status:** the engine and the MCP server work and are live. Playing inside ChatGPT, and by voice, is what we're building and testing now. The image above is a mock-up around a real frame from the engine.
+
+---
+
+## Contents
+
+- [Install](#install)
+- [What the model sees](#what-the-model-sees)
+- [How it works](#how-it-works)
+- [Run it locally](#run-it-locally)
+- [Connect your local server to Claude](#connect-your-local-server-to-claude)
+- [The tools](#the-tools)
+- [Development](#development)
+- [Deploying](#deploying)
+- [Project layout](#project-layout)
+- [License](#license)
 
 ---
 
@@ -56,7 +79,8 @@ claude mcp add --transport http doom https://doom-player.vercel.app/api/mcp
 ## What the model sees
 
 <p align="center">
-  <img src="docs/images/frames.png" alt="Three frames rendered by the engine: a zombie down the corridor, the zombie shot down, the next one walking in" width="820">
+  <img src="docs/images/frames.png" alt="Three frames rendered by the engine: a zombie down the corridor, the zombie shot down, the next one walking in" width="820"><br>
+  <sub><i>Spot, turn, fire. Three real frames from a headless run.</i></sub>
 </p>
 
 Real frames from the engine in this repo (Freedoom E1M1). The state says a zombie is 315 units away, 4.8° to the left. One `doom_turn` by exactly that angle and a `doom_act` fire later, it's down, and the next one walks in.
