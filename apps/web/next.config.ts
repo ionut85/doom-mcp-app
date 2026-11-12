@@ -10,8 +10,7 @@ const config: NextConfig = {
     "/api/mcp": ["../../wads/freedoom1.wad", "../../engine/dist/**", "./ui-dist/**"],
   },
   transpilePackages: ["@doom-player/doom-core"],
-  // Keep the Emscripten module out of the bundler; we pass the wasm bytes explicitly.
-  serverExternalPackages: ["@doom-player/engine"],
+  // The engine glue is loaded at runtime from engine/dist (see lib/assets.ts).
 };
 
 export default config;

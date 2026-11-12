@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Read pinned emsdk version
+        id: emsdk
+        run: echo "version=$(cat engine/emsdk-version.txt)" >> "$GITHUB_OUTPUT"
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ steps.emsdk.outputs.version }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Rebuild engine
+        run: pnpm build:engine
+
+      # engine/dist is committed (Vercel has no emsdk). It must match a fresh build
+      # of the committed C sources. The JS glue is checked exactly; the wasm can
+      # differ in metadata between hosts, so it is checked by running the tests
+      # against the fresh build below.
+      - name: Check committed engine glue is up to date
+        run: |
+          git diff --stat -- engine/dist/doom.mjs engine/dist/mobjtypes.json
+          git diff --quiet -- engine/dist/doom.mjs engine/dist/mobjtypes.json || {
+            echo "::error::engine/dist is stale. Run 'pnpm build:engine' and commit engine/dist."
+            exit 1
+          }
+
+      - name: Cache WAD
+        uses: actions/cache@v4
+        with:
+          path: wads/freedoom1.wad
+          key: freedoom1-0.13.0
+
+      - run: pnpm get-wad
+
+      - run: pnpm typecheck
+
+      - run: pnpm --dir apps/web build:ui
+
+      - run: pnpm --dir apps/web typecheck
+
+      - run: pnpm test
+
+      - name: Determinism against the committed wasm
+        run: |
+          git checkout -- engine/dist
+          pnpm vitest run packages/doom-core/test/determinism.test.ts

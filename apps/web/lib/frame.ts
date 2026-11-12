@@ -1,5 +1,5 @@
 import { PNG } from "pngjs";
-import { upscale } from "@doom-player/doom-core";
+import { upscale } from "@doom-player/doom-core/core";
 
 /** RGBA frame → PNG bytes, nearest-neighbour upscaled by `scale`. */
 export function encodePng(rgba: Uint8ClampedArray, width: number, height: number, scale = 2): Buffer {

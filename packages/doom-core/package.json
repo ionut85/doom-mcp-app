@@ -4,6 +4,11 @@
   "private": true,
   "license": "GPL-2.0-only",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@doom-player/engine": "workspace:*" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts"
+  },
+  "dependencies": {
+    "@doom-player/engine": "workspace:*"
+  }
 }
