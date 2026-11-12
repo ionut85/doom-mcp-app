@@ -34,9 +34,21 @@ export function loadFactory(): Promise<DoomModuleFactory> {
   return (factory ??= import(/*turbopackIgnore: true*/ /*webpackIgnore: true*/ url).then((m) => m.default));
 }
 
+/**
+ * Public origin the viewer loads the engine and WAD from (/doom/*): the
+ * production domain on Vercel, localhost in dev. Override with DOOM_PUBLIC_ORIGIN.
+ */
+export function publicOrigin(): string {
+  if (process.env.DOOM_PUBLIC_ORIGIN) return process.env.DOOM_PUBLIC_ORIGIN.replace(/\/$/, "");
+  if (process.env.VERCEL_ENV === "production" && process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${process.env.PORT ?? 3000}`;
+}
+
 export function loadViewerHtml(): Promise<string> {
   const file = path.join(repoRoot, "apps/web/ui-dist/viewer.html");
+  const inject = (html: string) => html.replaceAll("__DOOM_PUBLIC_ORIGIN__", publicOrigin());
   // Re-read in dev so `pnpm build:ui` changes show up without a restart.
-  if (process.env.NODE_ENV !== "production") return read(file).then(String);
-  return (viewer ??= read(file).then(String));
+  if (process.env.NODE_ENV !== "production") return read(file).then(String).then(inject);
+  return (viewer ??= read(file).then(String).then(inject));
 }

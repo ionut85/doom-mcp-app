@@ -5,32 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>DOOM</title>
-    <style>
-      :root { color-scheme: dark; }
-      body { margin: 0; background: #0b0b0b; color: #ddd; font: 13px/1.4 system-ui, sans-serif; }
-      main { max-width: 640px; margin: 0 auto; padding: 8px; }
-      canvas { width: 100%; aspect-ratio: 16 / 10; image-rendering: pixelated; background: #000; display: block; border-radius: 4px; }
-      .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
-      button { background: #7a1a12; color: #fff; border: 0; padding: 6px 12px; border-radius: 4px; font: inherit; cursor: pointer; }
-      button:disabled { opacity: .5; cursor: default; }
-      #status { opacity: .8; }
-      #hud { font-weight: 600; }
-      #captions { margin: 8px 0 0; padding-left: 20px; }
-      #captions li { opacity: .65; }
-      #captions li:first-child { opacity: 1; }
-      #captions small { opacity: .6; }
-      pre { white-space: pre-wrap; font-size: 11px; opacity: .7; margin: 8px 0 0; max-height: 160px; overflow: auto; }
-    </style>
+    <link rel="stylesheet" href="./src/viewer.css" />
   </head>
   <body>
-    <main>
-      <canvas id="screen" width="640" height="400"></canvas>
-      <div class="bar">
-        <span id="hud"></span>
-        <span id="status">connecting…</span>
+    <main class="app" id="app" data-mode="watch">
+      <header class="top">
+        <div class="title">
+          <span class="dot" aria-hidden="true"></span>
+          <strong>DOOM</strong>
+          <span class="muted" id="mapinfo">waiting for a game</span>
+        </div>
+        <div class="badges">
+          <span class="badge mode" id="mode-badge">Claude is playing</span>
+          <span class="badge" id="perception" hidden></span>
+        </div>
+      </header>
+
+      <div class="stage" id="stage">
+        <div class="screen" id="screen" tabindex="0" aria-label="DOOM game screen">
+          <canvas id="canvas" width="320" height="200"></canvas>
+          <div class="empty" id="empty">Starting the game…</div>
+          <div class="sync" id="sync" hidden><span class="spinner" aria-hidden="true"></span><span id="sync-text">replaying…</span></div>
+          <div class="banner" id="banner" hidden></div>
+        </div>
+        <div class="pad" id="pad" hidden>
+          <p class="pad-hint">Drag left side to move · right side to turn</p>
+          <div class="buttons">
+            <button type="button" class="fire" id="t-fire">FIRE</button>
+            <button type="button" id="t-use">USE</button>
+            <button type="button" id="t-wpn">WPN</button>
+          </div>
+        </div>
       </div>
-      <ol id="captions"></ol>
-      <details><summary>diagnostics</summary><pre id="diag"></pre></details>
+
+      <div class="hud" id="hud" hidden>
+        <span><b id="h-health">100</b> health</span>
+        <span><b id="h-armor">0</b> armor</span>
+        <span><b id="h-weapon">pistol</b> <span id="h-ammo"></span></span>
+        <span><b id="h-kills">0/0</b> kills</span>
+        <span class="muted" id="h-time"></span>
+      </div>
+
+      <section class="captions" id="captions-wrap">
+        <h2>Claude's moves</h2>
+        <ol id="captions"><li class="muted">No moves yet.</li></ol>
+      </section>
+
+      <footer class="actions">
+        <button type="button" class="primary" id="play-btn">Play yourself</button>
+        <button type="button" id="watch-btn" hidden>Back to Claude's game</button>
+        <button type="button" id="fullscreen-btn" hidden>Fullscreen</button>
+        <span class="hint" id="hint"></span>
+      </footer>
+
+      <details class="diag"><summary>Diagnostics</summary><pre id="diag"></pre></details>
     </main>
     <script type="module" src="./src/viewer.ts"></script>
   </body>

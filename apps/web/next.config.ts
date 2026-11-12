@@ -17,6 +17,8 @@ const config: NextConfig = {
     return [
       { source: "/doom/manifest.json", headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }] },
       { source: "/doom/:file((?!manifest).*)", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+      // The inline viewer (an MCP App on the host's sandbox origin) loads these cross-origin.
+      { source: "/doom/:path*", headers: [{ key: "Access-Control-Allow-Origin", value: "*" }, { key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
     ];
   },
 };

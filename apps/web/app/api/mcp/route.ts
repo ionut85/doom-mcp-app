@@ -2,8 +2,8 @@ import { createMcpHandler } from "mcp-handler";
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 import { ACTIONS, MAX_TICS_PER_STEP } from "@doom-player/doom-core/core";
-import { loadViewerHtml } from "@/lib/assets";
-import { act, frame, LIMITS, logResponse, newGame, observeSession, turn, type Result } from "@/lib/game";
+import { loadViewerHtml, publicOrigin } from "@/lib/assets";
+import { act, frame, inputLog, LIMITS, logResponse, newGame, observeSession, turn, type Result } from "@/lib/game";
 import { observationText } from "@/lib/observe";
 import { rateLimit } from "@/lib/ratelimit";
 import { PERCEPTIONS, sessionStore } from "@/lib/session";
@@ -39,9 +39,25 @@ function toolResult(r: Result, extra: Record<string, unknown> = {}) {
 
 const handler = createMcpHandler(
   (server) => {
-    registerAppResource(server, "DOOM viewer", VIEWER_URI, { description: "Inline DOOM viewer" }, async () => ({
-      contents: [{ uri: VIEWER_URI, mimeType: RESOURCE_MIME_TYPE, text: await loadViewerHtml(), _meta: { ui: { prefersBorder: true } } }],
-    }));
+    registerAppResource(server, "DOOM viewer", VIEWER_URI, { description: "Inline DOOM viewer" }, async () => {
+      const origin = publicOrigin();
+      return {
+        contents: [
+          {
+            uri: VIEWER_URI,
+            mimeType: RESOURCE_MIME_TYPE,
+            text: await loadViewerHtml(),
+            _meta: {
+              ui: {
+                prefersBorder: true,
+                // "Play yourself" loads the engine glue (module script), wasm and WAD from our own domain.
+                csp: { resourceDomains: [origin], connectDomains: [origin] },
+              },
+            },
+          },
+        ],
+      };
+    });
 
     registerAppTool(
       server,
@@ -125,15 +141,36 @@ const handler = createMcpHandler(
             session_id,
             version: f.session.version,
             perception: f.session.perception,
+            skill: f.session.skill,
+            episode: f.session.episode,
+            map: f.session.map,
+            tic: f.tic,
             hud: f.hud,
             captions: f.session.captions.slice(0, 8),
+            replayed: !f.cacheHit,
+            replay_tics: f.replayTics,
             frame: f.png.toString("base64"),
           },
         };
       },
     );
+
+    registerAppTool(
+      server,
+      "doom_log",
+      {
+        title: "DOOM: input log",
+        description: "App-only: the session's full input log, so the viewer can rebuild the game locally (take over from Claude).",
+        inputSchema: z.object({ session_id: sessionId }),
+        _meta: { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } },
+      },
+      async ({ session_id }) => {
+        const log = await inputLog(session_id);
+        return { content: [{ type: "text", text: `${log.steps.length} steps` }], structuredContent: log };
+      },
+    );
   },
-  { serverInfo: { name: "doom-player", version: "0.2.0" }, instructions: INSTRUCTIONS },
+  { serverInfo: { name: "doom-player", version: "0.3.0" }, instructions: INSTRUCTIONS },
 );
 
 async function guarded(req: Request): Promise<Response> {

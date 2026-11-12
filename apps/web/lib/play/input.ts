@@ -18,6 +18,8 @@ const STICK_RADIUS = 56;
 
 export interface InputOptions {
   alwaysRun: boolean;
+  /** Try pointer lock for mouse aiming (default true). Sandboxed iframes often refuse it. */
+  pointerLock?: boolean;
   /** Weapons the player owns, as weapon slots 1..7; used by "next weapon". */
   ownedSlots?: () => number[];
 }
@@ -99,12 +101,22 @@ export class PlayerInput {
       this.keys.clear();
       this.mouseFire = false;
     };
+    // Pointer lock gives mouse aiming. Where it is refused (sandboxed iframes),
+    // clicks fire directly and turning stays on the keyboard.
+    let lockUnavailable = this.opts.pointerLock === false || typeof target.requestPointerLock !== "function";
+    const lockError = () => (lockUnavailable = true);
     const move = (e: MouseEvent) => {
       if (document.pointerLockElement === target) this.mouseDx += e.movementX;
     };
     const mdown = (e: MouseEvent) => {
-      if (document.pointerLockElement !== target) {
-        target.requestPointerLock?.()?.catch?.(() => {});
+      target.focus?.({ preventScroll: true });
+      if (!lockUnavailable && document.pointerLockElement !== target) {
+        try {
+          const p = target.requestPointerLock() as unknown as Promise<void> | undefined;
+          p?.catch?.(lockError);
+        } catch {
+          lockError();
+        }
         return;
       }
       if (e.button === 0) this.mouseFire = true;
@@ -115,6 +127,7 @@ export class PlayerInput {
       if (e.button === 2) this.held.use = false;
     };
     const ctx = (e: Event) => e.preventDefault();
+    document.addEventListener("pointerlockerror", lockError);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
@@ -123,6 +136,7 @@ export class PlayerInput {
     window.addEventListener("mouseup", mup);
     target.addEventListener("contextmenu", ctx);
     this.cleanup.push(() => {
+      document.removeEventListener("pointerlockerror", lockError);
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);

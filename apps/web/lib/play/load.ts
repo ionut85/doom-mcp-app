@@ -52,7 +52,7 @@ export async function loadEngine(
 ): Promise<Engine> {
   onProgress?.({ phase: "manifest" });
   const m = await loadManifest(base);
-  factory ??= import(/* webpackIgnore: true */ /* turbopackIgnore: true */ `${base}${m.glue}`).then((x) => x.default);
+  factory ??= import(/* @vite-ignore */ /* webpackIgnore: true */ /* turbopackIgnore: true */ `${base}${m.glue}`).then((x) => x.default);
   wad ??= fetchWad(`${base}${m.wad}`, onProgress);
   const [f, w] = await Promise.all([factory, wad]);
   onProgress?.({ phase: "engine" });

@@ -151,11 +151,25 @@ export async function observeSession(id: string): Promise<Result> {
 }
 
 /** Current frame (1×, PNG) + HUD for the viewer. Uses the warm engine when possible. */
-export async function frame(id: string): Promise<{ session: Session; hud: Observation["hud"]; png: Buffer; cacheHit: boolean }> {
+export async function frame(id: string): Promise<{ session: Session; hud: Observation["hud"]; png: Buffer; tic: number; cacheHit: boolean; replayTics: number }> {
   const s = await sessionStore().get(id);
-  const { engine, cacheHit } = await engineFor(s);
+  const { engine, cacheHit, replayTics } = await engineFor(s);
   const png = encodePng(engine.render(), engine.width, engine.height, 1);
-  const hud = hudLine(engine.getState());
+  const st = engine.getState();
   checkin(s.id, engine, s.version);
-  return { session: s, hud, png, cacheHit };
+  return { session: s, hud: hudLine(st), png, tic: st.gametic, cacheHit, replayTics };
+}
+
+/** The session's full input log, for local replay in the viewer ("Play yourself", smooth playback). */
+export async function inputLog(id: string) {
+  const s = await sessionStore().get(id);
+  return {
+    session_id: s.id,
+    version: s.version,
+    skill: s.skill,
+    episode: s.episode,
+    map: s.map,
+    /** [forwardmove, sidemove, angleturn, buttons, tics] per step */
+    steps: s.steps.map((x) => [x.f, x.s, x.t, x.b, x.n] as const),
+  };
 }
