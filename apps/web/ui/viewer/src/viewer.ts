@@ -1,58 +1,93 @@
-// Phase 0 smoke viewer: proves inline render, tool-result delivery, app-only
-// tool calls via callServerTool, and which image path the host CSP allows.
+// Inline DOOM viewer (Phase 3 version): follows the session started by
+// doom_new_game by polling the app-only doom_frame tool.
 import { App } from "@modelcontextprotocol/ext-apps/app-with-deps";
 
-type Frame = { tic: number; frame: string; bootMs: number; totalMs: number; angle: number; serverTime: string };
+type Hud = { health: number; armor: number; weapon: string; ammo: number | null; kills: string; status: string };
+type Caption = { tic: number; text: string; action: string };
+type FrameResult = { unchanged?: boolean; version: number; hud?: Hud; captions?: Caption[]; frame?: string; perception?: string };
+
+const POLL_MS = 400;
 
 const canvas = document.getElementById("screen") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
 const statusEl = document.getElementById("status")!;
+const hudEl = document.getElementById("hud")!;
+const captionsEl = document.getElementById("captions")!;
 const diagEl = document.getElementById("diag")!;
-const advanceBtn = document.getElementById("advance") as HTMLButtonElement;
-const turnBtn = document.getElementById("turn") as HTMLButtonElement;
 
-const diag: Record<string, unknown> = { ua: navigator.userAgent };
+const diag: Record<string, unknown> = {};
 const showDiag = () => (diagEl.textContent = JSON.stringify(diag, null, 1));
 
-let tics = 0;
-let turn = 0;
+let sessionId: string | null = null;
+let version = -1;
+let polling = false;
 
-/** Decodes a base64 PNG without data:/blob: URLs (in case the host CSP blocks them). */
 async function drawPng(b64: string) {
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   try {
     const bmp = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
     ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    diag.imagePath = "createImageBitmap(Blob)";
   } catch (e) {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    img.src = `data:image/png;base64,${b64}`;
     diag.bitmapError = String(e);
-    await new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => (ctx.drawImage(img, 0, 0, canvas.width, canvas.height), resolve());
-      img.onerror = () => reject(new Error("data: URL blocked"));
-      img.src = `data:image/png;base64,${b64}`;
-    }).then(
-      () => (diag.imagePath = "img data: URL"),
-      (err) => (diag.imageError = String(err)),
+  }
+}
+
+function render(f: FrameResult) {
+  version = f.version;
+  if (f.frame) void drawPng(f.frame);
+  if (f.hud) {
+    const h = f.hud;
+    hudEl.textContent = `❤ ${h.health}  🛡 ${h.armor}  ${h.weapon.replace(/_/g, " ")}${h.ammo === null ? "" : ` ${h.ammo}`}  ☠ ${h.kills}${h.status === "alive" ? "" : `  · ${h.status.toUpperCase()}`}`;
+  }
+  if (f.captions) {
+    captionsEl.replaceChildren(
+      ...f.captions.slice(0, 5).map((c) => {
+        const li = document.createElement("li");
+        li.textContent = c.text || c.action;
+        if (c.text) {
+          const small = document.createElement("small");
+          small.textContent = `  ${c.action}`;
+          li.append(small);
+        }
+        return li;
+      }),
     );
   }
-  showDiag();
+  statusEl.textContent = `v${version}${f.perception ? ` · ${f.perception}` : ""}`;
 }
 
-function show(f: Frame, via: string) {
-  statusEl.textContent = `tic ${f.tic} · angle ${f.angle}° · server ${f.totalMs} ms (boot ${f.bootMs} ms) · via ${via}`;
-  void drawPng(f.frame);
+async function poll() {
+  if (!sessionId || polling || document.hidden) return;
+  polling = true;
+  const t0 = performance.now();
+  try {
+    const r = await app.callServerTool({ name: "doom_frame", arguments: { session_id: sessionId, since_version: version } });
+    const f = r.structuredContent as FrameResult | undefined;
+    diag.lastPollMs = Math.round(performance.now() - t0);
+    if (f && !f.unchanged) render(f);
+  } catch (e) {
+    diag.pollError = String(e);
+    showDiag();
+  } finally {
+    polling = false;
+  }
 }
 
-const app = new App({ name: "DOOM viewer", version: "0.1.0" });
+const app = new App({ name: "DOOM viewer", version: "0.2.0" });
 
 app.ontoolresult = (result) => {
-  diag.toolResultAt = new Date().toISOString();
-  const f = result.structuredContent as Frame | undefined;
-  if (f?.frame) show(f, "tool result");
-  else diag.toolResultKeys = Object.keys(result);
+  const sc = result.structuredContent as { session_id?: string } | undefined;
+  diag.toolResult = sc;
   showDiag();
+  if (sc?.session_id && sc.session_id !== sessionId) {
+    sessionId = sc.session_id;
+    version = -1;
+    void poll();
+  }
 };
 app.onhostcontextchanged = (c) => {
   diag.hostContext = { theme: c.theme, displayMode: c.displayMode, platform: c.platform };
@@ -63,36 +98,13 @@ app.onerror = (e) => {
   showDiag();
 };
 
-async function step(dTics: number, dTurn: number) {
-  tics = Math.min(350, tics + dTics);
-  turn = (turn + dTurn) % 360;
-  advanceBtn.disabled = turnBtn.disabled = true;
-  const t0 = performance.now();
-  try {
-    const r = await app.callServerTool({ name: "doom_smoke_frame", arguments: { tics, turn } });
-    diag.callServerToolMs = Math.round(performance.now() - t0);
-    const f = r.structuredContent as Frame | undefined;
-    if (f?.frame) show(f, "callServerTool");
-    else diag.callResult = r;
-  } catch (e) {
-    diag.callError = String(e);
-  }
-  advanceBtn.disabled = turnBtn.disabled = false;
-  showDiag();
-}
-
-advanceBtn.onclick = () => step(35, 0);
-turnBtn.onclick = () => step(0, 90);
-
 app
   .connect()
   .then(() => {
-    statusEl.textContent = "connected, waiting for tool result…";
+    statusEl.textContent = "waiting for game…";
     diag.connected = true;
-    diag.hostVersion = app.getHostVersion?.();
-    diag.hostCapabilities = app.getHostCapabilities?.();
-    advanceBtn.disabled = turnBtn.disabled = false;
     showDiag();
+    setInterval(poll, POLL_MS);
   })
   .catch((e) => {
     statusEl.textContent = "connect failed";

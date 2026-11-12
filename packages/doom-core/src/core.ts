@@ -115,6 +115,8 @@ export interface GameObject {
   angle: number;
   /** In line of sight (P_CheckSight). */
   visible: boolean;
+  /** Collision radius in map units. */
+  radius: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +144,7 @@ const S = {
   KILLS: 26, ITEMS: 27, SECRETS: 28, TOTALKILLS: 29, TOTALITEMS: 30, TOTALSECRETS: 31,
   DAMAGECOUNT: 32, BONUSCOUNT: 33, CARDS_MASK: 34, LEVELTIME: 35, ATTACKER_ANGLE: 36, HAS_ATTACKER: 37,
 } as const;
-const O = { ID: 0, TYPE: 1, X: 2, Y: 3, Z: 4, HEALTH: 5, FLAGS: 6, DIST: 7, ANGLE: 8, VISIBLE: 9 } as const;
+const O = { ID: 0, TYPE: 1, X: 2, Y: 3, Z: 4, HEALTH: 5, FLAGS: 6, DIST: 7, ANGLE: 8, VISIBLE: 9, RADIUS: 10 } as const;
 const MF_SPECIAL = 0x1;
 const MF_COUNTKILL = 0x400000;
 
@@ -341,6 +343,7 @@ export class Engine {
         distance: o(O.DIST),
         angle: round1(relBamToDegrees(o(O.ANGLE))),
         visible: o(O.VISIBLE) !== 0,
+        radius: o(O.RADIUS),
       });
     }
     return out.sort((a, b) => a.distance - b.distance || a.id - b.id);

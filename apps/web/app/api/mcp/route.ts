@@ -1,94 +1,147 @@
 import { createMcpHandler } from "mcp-handler";
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
+import { ACTIONS, MAX_TICS_PER_STEP } from "@doom-player/doom-core/core";
 import { loadViewerHtml } from "@/lib/assets";
-import { bootEngine } from "@/lib/engine-host";
-import { encodePng } from "@/lib/frame";
+import { act, frame, LIMITS, logResponse, newGame, observeSession, turn, type Result } from "@/lib/game";
+import { observationText } from "@/lib/observe";
+import { rateLimit } from "@/lib/ratelimit";
+import { PERCEPTIONS, sessionStore } from "@/lib/session";
 
 export const maxDuration = 60;
 
 const VIEWER_URI = "ui://doom/viewer";
 
-/** Phase 0 smoke test: a fresh engine, `tics` tics walking forward, one PNG frame. */
-async function smokeFrame(tics: number, turn: number) {
-  const t0 = performance.now();
-  const engine = await bootEngine({ skill: 3, episode: 1, map: 1 });
-  const bootMs = performance.now() - t0;
-  if (turn) engine.turn(turn);
-  if (tics > 0) engine.applyTicStep({ f: 25, s: 0, t: 0, b: 0, n: tics });
-  const png = encodePng(engine.render(), engine.width, engine.height, 2);
-  const state = engine.getState();
-  return {
-    tic: state.gametic,
-    health: state.health,
-    angle: state.angle,
-    frame: png.toString("base64"),
-    bootMs: Math.round(bootMs),
-    totalMs: Math.round(performance.now() - t0),
-    serverTime: new Date().toISOString(),
-  };
+const INSTRUCTIONS = `You are playing DOOM (Freedoom Phase 1, E1M1 by default). The game is frozen between your tool calls: time only passes when you act, so think as long as you like.
+
+How to play well:
+- Start with doom_new_game, keep the session_id, and pass a short "caption" on every doom_act / doom_turn describing your intent (the audience sees it).
+- Angles are degrees relative to where you face: negative = left, positive = right. To aim at an enemy, call doom_turn with its angle, then fire. "in_crosshair": true means a shot will hit.
+- Hitscan weapons (pistol, shotgun, chaingun) only auto-aim vertically, so turn precisely first. Fire in bursts of 7-14 tics and re-observe.
+- Move in short steps (7-21 tics) when enemies are near; longer steps (35+) only in cleared areas. "moved N units" in events tells you if you are stuck against a wall: back off and turn.
+- Doors and switches: face them up close and press "use" (1-2 tics). Exits are usually a switch in a small room.
+- Health below 30: retreat, strafe out of sight, and look for stimpacks/medikits (nearby_items).
+- Shoot explosive barrels near groups of enemies, but not when you are within ~150 units of them.
+- When dead, doom_act ["use"] restarts the level.`;
+
+const caption = z.string().max(LIMITS.maxCaptionLength).optional().describe("One short sentence about what you are doing and why, shown to the audience, e.g. 'Turning to face the imp on the left'.");
+const sessionId = z.string().min(10).max(40).describe("session_id returned by doom_new_game");
+
+function toolResult(r: Result, extra: Record<string, unknown> = {}) {
+  const text = `session_id: ${r.session.id}\n${observationText(r.obs, r.session.perception)}`;
+  const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [];
+  if (r.obs.png) content.push({ type: "image", data: r.obs.png.toString("base64"), mimeType: "image/png" });
+  content.push({ type: "text", text });
+  const result = { content, structuredContent: { session_id: r.session.id, version: r.session.version, hud: r.obs.hud, ...extra } };
+  logResponse(r, JSON.stringify(result).length);
+  return result;
 }
 
 const handler = createMcpHandler(
   (server) => {
-    registerAppResource(
+    registerAppResource(server, "DOOM viewer", VIEWER_URI, { description: "Inline DOOM viewer" }, async () => ({
+      contents: [{ uri: VIEWER_URI, mimeType: RESOURCE_MIME_TYPE, text: await loadViewerHtml(), _meta: { ui: { prefersBorder: true } } }],
+    }));
+
+    registerAppTool(
       server,
-      "DOOM viewer",
-      VIEWER_URI,
-      { description: "Inline DOOM viewer" },
-      async () => ({
-        contents: [
-          {
-            uri: VIEWER_URI,
-            mimeType: RESOURCE_MIME_TYPE,
-            text: await loadViewerHtml(),
-            _meta: { ui: { prefersBorder: true } },
-          },
-        ],
-      }),
+      "doom_new_game",
+      {
+        title: "New DOOM game",
+        description:
+          "Start a new game of DOOM and show it in an inline viewer. Returns a session_id and the first observation (screenshot and/or structured state, depending on `perception`). The game is frozen until you call doom_act or doom_turn.",
+        inputSchema: z.object({
+          skill: z.number().int().min(1).max(5).default(3).describe("1 = easiest, 3 = normal (Hurt me plenty), 5 = nightmare"),
+          episode: z.number().int().min(1).max(4).default(1),
+          map: z.number().int().min(1).max(9).default(1),
+          perception: z.enum(PERCEPTIONS).default("both").describe("What you get back after each action: 'vision' = screenshot + HUD numbers only; 'state' = structured state only (no image); 'both' = screenshot + structured state"),
+        }),
+        _meta: { ui: { resourceUri: VIEWER_URI } },
+      },
+      async ({ skill, episode, map, perception }) => toolResult(await newGame({ skill, episode, map, perception })),
+    );
+
+    server.registerTool(
+      "doom_act",
+      {
+        title: "DOOM: act",
+        description: `Hold actions for a number of tics (35 tics = 1 second), as a sequence of up to ${LIMITS.maxStepsPerCall} steps, ${LIMITS.maxTicsPerCall} tics total. Returns the observation after the last step. Actions: ${ACTIONS.join(", ")}. "run" doubles move/turn speed. turn_left/turn_right turn ~3.5°/tic (7° with run); for exact aiming prefer doom_turn. "use" opens doors and presses switches when facing them up close. weapon_N switches weapon (1 fist/chainsaw, 2 pistol, 3 shotgun, 4 chaingun, 5 rocket launcher, 6 plasma, 7 BFG). An empty actions list waits.`,
+        inputSchema: z.object({
+          session_id: sessionId,
+          steps: z
+            .array(
+              z.object({
+                actions: z.array(z.enum(ACTIONS)).max(6),
+                tics: z.number().int().min(1).max(MAX_TICS_PER_STEP),
+              }),
+            )
+            .min(1)
+            .max(LIMITS.maxStepsPerCall),
+          caption,
+        }),
+      },
+      async ({ session_id, steps, caption }) => toolResult(await act(session_id, steps, caption)),
+    );
+
+    server.registerTool(
+      "doom_turn",
+      {
+        title: "DOOM: turn",
+        description:
+          "Turn by an exact number of degrees: negative = left, positive = right (same convention as enemy angles in observations). Takes a few tics (max ~11°/tic). Use it to aim: doom_turn(enemy.angle), then doom_act fire.",
+        inputSchema: z.object({ session_id: sessionId, degrees: z.number().min(-180).max(180), caption }),
+      },
+      async ({ session_id, degrees, caption }) => toolResult(await turn(session_id, degrees, caption)),
+    );
+
+    server.registerTool(
+      "doom_observe",
+      {
+        title: "DOOM: observe",
+        description: "Get the current observation without letting any time pass.",
+        inputSchema: z.object({ session_id: sessionId }),
+      },
+      async ({ session_id }) => toolResult(await observeSession(session_id)),
     );
 
     registerAppTool(
       server,
-      "doom_smoke",
+      "doom_frame",
       {
-        title: "DOOM smoke test",
-        description:
-          "Smoke test for the DOOM MCP App: boots DOOM (Freedoom E1M1) on the server and shows the start frame in an inline viewer. Takes no arguments.",
-        inputSchema: z.object({}),
-        _meta: { ui: { resourceUri: VIEWER_URI } },
+        title: "DOOM: viewer frame",
+        description: "App-only: latest frame, HUD and captions for the inline viewer. Returns {unchanged: true} if the session version equals since_version.",
+        inputSchema: z.object({ session_id: sessionId, since_version: z.number().int().optional() }),
+        _meta: { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } },
       },
-      async () => {
-        const r = await smokeFrame(0, 0);
+      async ({ session_id, since_version }) => {
+        const s = await sessionStore().get(session_id);
+        if (since_version !== undefined && s.version === since_version) {
+          return { content: [{ type: "text", text: "unchanged" }], structuredContent: { unchanged: true, version: s.version } };
+        }
+        const f = await frame(session_id);
         return {
-          content: [
-            { type: "text", text: `DOOM booted in ${r.bootMs} ms (tic ${r.tic}). The viewer shows the E1M1 start frame.` },
-            { type: "image", data: r.frame, mimeType: "image/png" },
-          ],
-          structuredContent: r,
+          content: [{ type: "text", text: `version ${f.session.version}` }],
+          structuredContent: {
+            session_id,
+            version: f.session.version,
+            perception: f.session.perception,
+            hud: f.hud,
+            captions: f.session.captions.slice(0, 8),
+            frame: f.png.toString("base64"),
+          },
         };
       },
     );
-
-    registerAppTool(
-      server,
-      "doom_smoke_frame",
-      {
-        title: "DOOM smoke frame",
-        description: "App-only: renders E1M1 after walking forward for `tics` tics.",
-        inputSchema: z.object({
-          tics: z.number().int().min(0).max(350),
-          turn: z.number().min(-360).max(360).optional(),
-        }),
-        _meta: { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } },
-      },
-      async ({ tics, turn }) => {
-        const r = await smokeFrame(tics, turn ?? 0);
-        return { content: [{ type: "text", text: `tic ${r.tic}` }], structuredContent: r };
-      },
-    );
   },
-  { serverInfo: { name: "doom-player", version: "0.1.0" } },
+  { serverInfo: { name: "doom-player", version: "0.2.0" }, instructions: INSTRUCTIONS },
 );
 
-export { handler as GET, handler as POST, handler as DELETE };
+async function guarded(req: Request): Promise<Response> {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  if (req.method === "POST" && !(await rateLimit(ip))) {
+    return new Response(JSON.stringify({ error: "rate limited" }), { status: 429, headers: { "content-type": "application/json", "retry-after": "10" } });
+  }
+  return handler(req);
+}
+
+export { guarded as GET, guarded as POST, guarded as DELETE };

@@ -2,12 +2,17 @@
 // two levels above apps/web both locally and inside the Vercel function bundle.
 // The files are traced explicitly via outputFileTracingIncludes in
 // next.config.ts, so these dynamic reads are excluded from Turbopack analysis.
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { DoomModuleFactory } from "@doom-player/doom-core/core";
 
-const repoRoot = path.resolve(/*turbopackIgnore: true*/ process.cwd(), "../..");
+// apps/web locally and on Vercel (cwd = <root>/apps/web); the repo root in tests and scripts.
+const repoRoot =
+  [path.resolve(/*turbopackIgnore: true*/ process.cwd(), "../.."), path.resolve(/*turbopackIgnore: true*/ process.cwd())].find((d) =>
+    existsSync(/*turbopackIgnore: true*/ path.join(d, "engine/dist/doom.wasm")),
+  ) ?? path.resolve(/*turbopackIgnore: true*/ process.cwd(), "../..");
 const read = (p: string) => fs.readFile(/*turbopackIgnore: true*/ p);
 
 let wad: Promise<Uint8Array> | undefined;

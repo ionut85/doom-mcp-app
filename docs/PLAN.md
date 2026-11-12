@@ -119,7 +119,7 @@ claude-plays-doom/
 - [x] `gh repo create claude-plays-doom --public` (ask me before making it public; private is fine to start), pnpm monorepo, GPL-2.0 LICENSE, NOTICE, README stub, CLAUDE.md with conventions.
 - [x] Next.js app deployed to Vercel from the GitHub repo (preview deploys on PRs).
 - [ ] Upstash Redis added via Vercel Marketplace; env vars pulled with `vercel env pull`. *(blocked: Upstash Marketplace terms must be accepted in the browser)*
-- [ ] MCP Apps smoke test in claude.ai (web + desktop): `doom_smoke` renders the inline viewer; its buttons call the app-only `doom_smoke_frame`.
+- [x] MCP Apps smoke test in claude.ai (web + desktop): `doom_smoke` renders the inline viewer; its buttons call the app-only `doom_smoke_frame`.
 - [x] CI: install emsdk, build the engine, run tests.
 - **Done when:** a hello-world page is live on the Vercel URL and CI is green.
 

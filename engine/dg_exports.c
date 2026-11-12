@@ -199,7 +199,7 @@ int doom_state_len(void) { return S_COUNT; }
 // objects (enemies, items, other shootables) around the player
 
 #define MAX_OBJS 256
-enum { O_ID, O_TYPE, O_X, O_Y, O_Z, O_HEALTH, O_FLAGS, O_DIST, O_ANGLE, O_VISIBLE, O_STRIDE };
+enum { O_ID, O_TYPE, O_X, O_Y, O_Z, O_HEALTH, O_FLAGS, O_DIST, O_ANGLE, O_VISIBLE, O_RADIUS, O_STRIDE };
 static int32_t objs[MAX_OBJS * O_STRIDE];
 
 // Fills the object table with every mobj within `max_dist` map units that is
@@ -230,6 +230,7 @@ int doom_get_objects(int max_dist) {
     o[O_DIST] = dist;
     o[O_ANGLE] = rel_angle(pmo, mo->x, mo->y);
     o[O_VISIBLE] = P_CheckSight(pmo, mo) ? 1 : 0;
+    o[O_RADIUS] = mo->radius >> FRACBITS;
     n++;
   }
   return n;
