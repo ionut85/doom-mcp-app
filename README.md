@@ -127,7 +127,11 @@ KV_REST_API_URL=...
 KV_REST_API_TOKEN=...
 ```
 
-### 4. Watch a bot play
+### 4. Try the inline viewer without Claude
+
+Open http://localhost:3000/dev/host. It's a minimal MCP Apps host for development: it shows the viewer in a sandboxed iframe, starts a game, and can send scripted "Claude" moves. Sandboxed frames can't load from `localhost`, so to test **Play yourself** locally, add `DOOM_PUBLIC_ORIGIN=https://doom-player.vercel.app` to `apps/web/.env.local`. The viewer then loads the engine from production.
+
+### 5. Watch a bot play
 
 In a second terminal, while `pnpm dev` is running:
 
@@ -160,6 +164,7 @@ claude mcp add --transport http doom-local http://localhost:3000/api/mcp
 | `doom_turn` | Claude | Turns by exact degrees: negative = left, positive = right, the same convention as enemy angles. |
 | `doom_observe` | Claude | Returns the current observation without advancing time. |
 | `doom_frame` | Viewer only | Returns the latest frame, HUD and captions for the inline viewer. Hidden from Claude via `visibility: ["app"]`. |
+| `doom_log` | Viewer only | Returns the session's input log, so **Play yourself** can rebuild Claude's game in the browser and hand you the controls from Claude's exact position. |
 
 An observation in `state` or `both` mode looks like this, shortened:
 
@@ -212,6 +217,7 @@ Useful environment variables:
 | `DOOM_IWAD` | Path to a different IWAD |
 | `DOOM_ENGINE_CACHE` | Max warm engines per server instance (default 6; `0` forces replay on every call) |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis for sessions and rate limiting |
+| `DOOM_PUBLIC_ORIGIN` | Origin the inline viewer loads the engine and WAD from (default: the production domain on Vercel, `http://localhost:3000` locally) |
 
 ---
 

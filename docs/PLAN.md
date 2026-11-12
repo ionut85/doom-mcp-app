@@ -142,8 +142,9 @@ claude-plays-doom/
 - **Done when:** Claude Code plays 30+ actions in a row with p95 tool latency < 2 s.
 
 ### Phase 4: MCP App viewer
-- [ ] `ui://doom/viewer` resource (single-file HTML), linked from `doom_new_game`; `doom_frame` app-only polling; captions; human "Play yourself" mode.
-- [ ] Test with the ext-apps basic host / an MCP Apps-capable test host, then in **Claude (web + desktop)** as a custom connector.
+- [x] `ui://doom/viewer` resource (single-file HTML), linked from `doom_new_game`; `doom_frame` app-only polling; captions; human "Play yourself" mode.
+- [x] Test with an MCP Apps-capable test host *(our own `/dev/host` on AppBridge; installing the ext-apps repo's basic host was blocked by the agent sandbox)*.
+- [ ] Test the full viewer in **Claude (web + desktop)** as a custom connector.
 - **Done when:** in claude.ai, "Start a game of DOOM and play it" shows the inline viewer updating while Claude plays.
 
 ### Phase 5: Play quality
@@ -261,6 +262,22 @@ claude-plays-doom/
   - Hashed files are cached as immutable; the manifest always revalidates.
   - Stripping sound and music would only save ~3 MB, so the WAD ships unmodified to keep determinism safe.
 - **Cross-host determinism verified.** `/play?selftest=1` replays the seeded log from `doom-core/selftest.ts`, and the browser gives the same state and frame hashes as Node. The hashes are pinned in a Node test, so CI catches drift.
+
+### Phase 4 results
+- **Viewer.** It shows:
+  - a header with map, skill and perception badge, and a mode badge ("Claude is playing" / "You're playing");
+  - the 4:3 screen, a "replaying…" indicator on cache-miss polls, and banners for death and level complete;
+  - a HUD strip, and Claude's last 6 captions with game time and action labels;
+  - a Fullscreen button when the host lists that display mode.
+- **Polling.** It starts at load and doesn't depend on the `ui/initialize` handshake. It's a no-op until a tool result gives a session.
+- **Play yourself = take over.** The app-only `doom_log` returns the session's TicSteps. The viewer replays them locally in the iframe's own wasm engine and hands over the controls from Claude's exact position. Claude's server game is unaffected, and "Back to Claude's game" resumes polling.
+  - Verified in the harness: the HUD continued from Claude's state (101 health, 49 ammo), and keyboard move and fire worked inside the sandboxed iframe.
+- **Assets cross-origin.** The viewer resource declares `csp.resourceDomains` / `connectDomains` = the public origin, which is injected into the HTML as `__DOOM_PUBLIC_ORIGIN__`. `/doom/*` is served with `Access-Control-Allow-Origin: *` and `CORP: cross-origin`.
+  - Verified: from an opaque-origin sandbox, under a CSP limited to the declared domain, the manifest, the module glue and the 10 MB WAD all load from production.
+- **Local testing gotcha.** Chrome blocks requests from opaque-origin (sandboxed) frames to `localhost`, so locally set `DOOM_PUBLIC_ORIGIN=https://doom-player.vercel.app`.
+- **Input fixes found while testing.** Key taps shorter than one tic are latched for one tic, and clicks fire when pointer lock is refused (common in sandboxed iframes).
+- **Known.** The bundled SDK (zod) probes `eval`, which shows up as a CSP violation in strict hosts. It falls back without eval, so it's harmless.
+- **Dev harness.** `/dev/host` (404 in production) is a minimal MCP Apps host for local viewer testing. It renders the viewer in an opaque-origin sandbox with a CSP built only from the declared domains, forwards tool calls, and can script "Claude" moves.
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool

@@ -26,6 +26,8 @@ export interface InputOptions {
 
 export class PlayerInput {
   private keys = new Set<string>();
+  /** Keys pressed since the last tic: a tap shorter than one tic (28 ms) still counts once. */
+  private tapped = new Set<string>();
   private mouseDx = 0;
   private mouseFire = false;
   private touchTurnDx = 0;
@@ -40,7 +42,7 @@ export class PlayerInput {
 
   /** The ticcmd for the next tic. Call exactly once per tic. */
   next(): TicStep {
-    const k = (...codes: string[]) => codes.some((c) => this.keys.has(c));
+    const k = (...codes: string[]) => codes.some((c) => this.keys.has(c) || this.tapped.has(c));
     const shift = k("ShiftLeft", "ShiftRight");
     const run = this.opts.alwaysRun !== shift ? 1 : 0;
     let f = 0, s = 0, t = 0, b = 0;
@@ -66,6 +68,7 @@ export class PlayerInput {
       this.lastSlot = this.pendingWeapon;
       this.pendingWeapon = 0;
     }
+    this.tapped.clear();
     const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v));
     return { f: clamp(f, 127), s: clamp(s, 127), t: clamp(t, 32767), b, n: 1 };
   }
@@ -93,12 +96,14 @@ export class PlayerInput {
       if (!isGameKey(e.code)) return;
       e.preventDefault();
       this.keys.add(e.code);
+      this.tapped.add(e.code);
       const m = /^Digit([1-7])$/.exec(e.code);
       if (m) this.selectWeapon(Number(m[1]));
     };
     const up = (e: KeyboardEvent) => this.keys.delete(e.code);
     const blur = () => {
       this.keys.clear();
+      this.tapped.clear();
       this.mouseFire = false;
     };
     // Pointer lock gives mouse aiming. Where it is refused (sandboxed iframes),
