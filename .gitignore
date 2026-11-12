@@ -9,3 +9,5 @@ out/
 dist-ui/
 *.log
 .DS_Store
+apps/web/ui-dist/
+*.tsbuildinfo

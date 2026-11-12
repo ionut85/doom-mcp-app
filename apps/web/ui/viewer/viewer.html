@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>DOOM</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0b0b0b; color: #ddd; font: 13px/1.4 system-ui, sans-serif; }
+      main { max-width: 640px; margin: 0 auto; padding: 8px; }
+      canvas { width: 100%; aspect-ratio: 16 / 10; image-rendering: pixelated; background: #000; display: block; border-radius: 4px; }
+      .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+      button { background: #7a1a12; color: #fff; border: 0; padding: 6px 12px; border-radius: 4px; font: inherit; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: default; }
+      #status { opacity: .8; }
+      pre { white-space: pre-wrap; font-size: 11px; opacity: .7; margin: 8px 0 0; max-height: 160px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <canvas id="screen" width="640" height="400"></canvas>
+      <div class="bar">
+        <button id="advance" disabled>Walk 1 s (app-only tool)</button>
+        <button id="turn" disabled>Turn 90°</button>
+        <span id="status">connecting…</span>
+      </div>
+      <pre id="diag"></pre>
+    </main>
+    <script type="module" src="./src/viewer.ts"></script>
+  </body>
+</html>

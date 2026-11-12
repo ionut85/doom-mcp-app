@@ -2,3 +2,5 @@ packages:
   - engine
   - packages/*
   - apps/*
+allowBuilds:
+  esbuild: true
