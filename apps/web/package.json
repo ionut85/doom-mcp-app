@@ -5,13 +5,12 @@
   "license": "GPL-2.0-only",
   "type": "module",
   "scripts": {
-    "prebuild": "bash ../../scripts/get-wad.sh && pnpm build:ui",
-    "build": "next build",
+    "build": "pnpm assets && next build",
     "build:ui": "vite build --config ui/viewer/vite.config.ts",
-    "predev": "bash ../../scripts/get-wad.sh && pnpm build:ui",
-    "dev": "next dev",
+    "dev": "pnpm assets && next dev",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "assets": "bash ../../scripts/get-wad.sh && pnpm build:ui"
   },
   "dependencies": {
     "@doom-player/doom-core": "workspace:*",
