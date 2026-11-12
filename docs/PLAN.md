@@ -116,9 +116,11 @@ claude-plays-doom/
 ## 4. Phases & acceptance criteria
 
 ### Phase 0: Repo & pipeline
-- [ ] `gh repo create claude-plays-doom --public` (ask me before making it public; private is fine to start), pnpm monorepo, GPL-2.0 LICENSE, NOTICE, README stub, CLAUDE.md with conventions.
-- [ ] Next.js app deployed to Vercel from the GitHub repo (preview deploys on PRs). Upstash Redis added via Vercel Marketplace; env vars pulled with `vercel env pull`.
-- [ ] CI: install emsdk, build the engine, run tests.
+- [x] `gh repo create claude-plays-doom --public` (ask me before making it public; private is fine to start), pnpm monorepo, GPL-2.0 LICENSE, NOTICE, README stub, CLAUDE.md with conventions.
+- [x] Next.js app deployed to Vercel from the GitHub repo (preview deploys on PRs).
+- [ ] Upstash Redis added via Vercel Marketplace; env vars pulled with `vercel env pull`. *(blocked: Upstash Marketplace terms must be accepted in the browser)*
+- [ ] MCP Apps smoke test in claude.ai (web + desktop): `doom_smoke` renders the inline viewer; its buttons call the app-only `doom_smoke_frame`.
+- [x] CI: install emsdk, build the engine, run tests.
 - **Done when:** a hello-world page is live on the Vercel URL and CI is green.
 
 ### Phase 1: Headless engine
@@ -204,6 +206,19 @@ claude-plays-doom/
   - Replay is not a bottleneck, so the warm-instance cache is optional.
 - Determinism: same log gives the same state and frame hashes across runs; rendering between steps gives the same result as rendering only at the end. Exact turns are verified (±0.1°).
 - Not yet verified: determinism across Node vs browser (Phase 2 selftest).
+
+### Phase 0 results
+- **Repo and deploys.** Private repo `eros902002/doom-player`. The Vercel project `doom-player` (personal team) has root `apps/web`, Node 24 and Fluid compute, and is Git-connected. Production: https://doom-player.vercel.app, MCP endpoint `/api/mcp`.
+- **Vercel needs corepack for pnpm 12.** Set `ENABLE_EXPERIMENTAL_COREPACK=1` (all environments) so the build uses `packageManager: pnpm@12.18.0`. pnpm doesn't run `pre*` scripts, so `build` runs `pnpm assets`: `get-wad.sh` (downloaded at build time, checksum-verified) plus the viewer build.
+- **Bundling.** Turbopack bundled the Emscripten glue even with `serverExternalPackages`, which traced the whole project. Fixed with:
+  - a bundler-safe `@doom-player/doom-core/core` entry that takes the module factory;
+  - `apps/web/lib/assets.ts` loading `engine/dist/doom.mjs` at runtime with `turbopackIgnore`;
+  - explicit `outputFileTracingIncludes`.
+  - The function now traces 118 files.
+- **Smoke tools.** `doom_smoke` (model-visible, renders `ui://doom/viewer`) and `doom_smoke_frame` (`visibility: ["app"]`). Each boots a fresh engine and returns a PNG.
+  - Production timings: cold call ~1.8 s round trip (boot ~450–600 ms); warm ~0.65 s round trip (boot 66–145 ms, server total ~180–270 ms).
+- **Viewer.** A single-file Vite build (`@modelcontextprotocol/ext-apps/app-with-deps`, 524 KB). It shows a diagnostics panel: which image-decode path the host CSP allows, `callServerTool` latency, and host context.
+- **CI.** Green in ~1m40s. The Linux emsdk 7.0.0 rebuild yields byte-identical `doom.mjs` glue; determinism tests pass on Linux.
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool
