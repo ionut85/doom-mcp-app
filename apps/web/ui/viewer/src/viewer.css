@@ -54,6 +54,7 @@ canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; 
 .captions ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .captions li { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 8px; color: var(--muted); }
 .captions li:first-child { color: var(--fg); }
+.captions li.muted { display: block; color: var(--muted); }
 .captions li:first-child .text { font-weight: 600; }
 .captions .t { font: 11px/1.8 ui-monospace, Menlo, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
 .captions .act { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); margin-left: 6px; }

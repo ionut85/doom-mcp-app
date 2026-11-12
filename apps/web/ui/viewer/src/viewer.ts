@@ -42,6 +42,12 @@ const stage = $("stage");
 const diagEl = $("diag");
 const diag: Record<string, unknown> = { origin: ORIGIN };
 const showDiag = () => (diagEl.textContent = JSON.stringify(diag, null, 1));
+const cspViolations: string[] = [];
+document.addEventListener("securitypolicyviolation", (e) => {
+  cspViolations.push(`${e.effectiveDirective} blocked ${e.blockedURI}`);
+  diag.cspViolations = cspViolations.slice(-5);
+  showDiag();
+});
 
 let sessionId: string | null = null;
 let version = -1;
@@ -329,6 +335,10 @@ document.addEventListener("visibilitychange", () => {
   else player.loop.start();
 });
 
+// Poll from the start: poll() is a no-op until a tool result gives us a session,
+// and it must not depend on the initialize handshake finishing.
+setInterval(poll, POLL_MS);
+
 app
   .connect()
   .then(() => {
@@ -336,7 +346,6 @@ app
     diag.hostVersion = app.getHostVersion?.();
     updateFullscreenButton();
     showDiag();
-    setInterval(poll, POLL_MS);
   })
   .catch((e) => {
     $("empty").textContent = "Couldn't connect to the host.";
