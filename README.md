@@ -1,44 +1,65 @@
-# doom-player
+<h1 align="center">DOOM, inside ChatGPT. By voice.</h1>
 
-**Claude plays DOOM inside the Claude app.** DOOM runs headless on the server as WebAssembly, exposed as an [MCP](https://modelcontextprotocol.io) server with an inline [MCP App](https://modelcontextprotocol.io/extensions/apps/overview) viewer. Claude sees the game (a screenshot, structured state, or both) and plays it through tool calls. The game is frozen between calls, so Claude can take as long as it likes to think.
+<p align="center">
+  <img src="docs/images/hero.png" alt="Your Mac runs ChatGPT, ChatGPT shows DOOM in an app panel, and the game runs on a server on Vercel" width="820">
+</p>
 
-- **Autonomous:** "Start a game of DOOM and clear E1M1."
-- **Directed:** "Go through the door on the left and kill the imp."
-- **Human:** play it yourself in the browser *(in progress)*.
+<p align="center">
+  <a href="https://doom-mcp.vercel.app"><b>Landing page</b></a> &middot;
+  <a href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a> &middot;
+  <a href="#install">Install</a>
+</p>
 
-Live MCP endpoint: `https://doom-player.vercel.app/api/mcp`
+An experiment in how far **MCP Apps** can go. DOOM runs headless on a server as WebAssembly, exposed as a remote [MCP](https://modelcontextprotocol.io) server with an inline [MCP App](https://modelcontextprotocol.io/extensions/apps/overview) viewer. The model sees the game (a screenshot, structured state, or both) and plays it through tool calls. The game is frozen between calls, so the model can take as long as it likes to think.
 
----
+The goal is to play it inside ChatGPT by voice: you say "keep going down the corridor and shoot anything that moves", and the model turns that into game actions.
 
-## Contents
-
-- [Try it in Claude](#try-it-in-claude)
-- [How it works](#how-it-works)
-- [Run it locally](#run-it-locally)
-- [Connect your local server to Claude](#connect-your-local-server-to-claude)
-- [The tools](#the-tools)
-- [Development](#development)
-- [Deploying](#deploying)
-- [Project layout](#project-layout)
-- [License](#license)
+> **Status:** the engine and the MCP server work and are live. Playing inside ChatGPT, and by voice, is what we're building and testing now. The image above is a mock-up around a real frame from the engine.
 
 ---
 
-## Try it in Claude
+## Install
 
-1. In **claude.ai** (web or desktop), open **Settings → Connectors → Add custom connector**.
-2. Enter the URL `https://doom-player.vercel.app/api/mcp`. No auth is needed.
-3. In a new chat, ask:
+It's a normal remote MCP server: add it to your client by URL. No sign-in needed.
 
-   > Start a game of DOOM and play E1M1. Caption each move.
+```
+https://doom-player.vercel.app/api/mcp
+```
 
-An inline viewer appears under the first tool call and updates as Claude plays.
+Transport: Streamable HTTP (not SSE).
 
-To use it from **Claude Code** instead, add the server:
+**ChatGPT**
+
+1. Open ChatGPT Plugins (chatgpt.com/plugins), select **+**, then **Add custom MCP server**.
+2. Give it a name (e.g. DOOM) and paste the URL above under **Connection**.
+3. Leave authentication off, confirm the warning, and select **Create as a plugin**.
+4. Start a new chat, type `@`, pick DOOM and ask: "Start a game of DOOM and play E1M1. Caption each move."
+
+Adding custom MCP servers depends on your ChatGPT plan and workspace settings.
+
+**Claude** (web or desktop)
+
+1. Open **Settings → Connectors → Add custom connector**.
+2. Paste the URL above and save.
+3. In a new chat, ask: "Start a game of DOOM and play E1M1. Caption each move."
+
+**Claude Code**
 
 ```bash
 claude mcp add --transport http doom https://doom-player.vercel.app/api/mcp
 ```
+
+**Any other MCP client** that supports Streamable HTTP works the same way. To poke at the tools directly, run `npx @modelcontextprotocol/inspector@latest` and point it at the URL.
+
+---
+
+## What the model sees
+
+<p align="center">
+  <img src="docs/images/frames.png" alt="Three frames rendered by the engine: a zombie down the corridor, the zombie shot down, the next one walking in" width="820">
+</p>
+
+Real frames from the engine in this repo (Freedoom E1M1). The state says a zombie is 315 units away, 4.8° to the left. One `doom_turn` by exactly that angle and a `doom_act` fire later, it's down, and the next one walks in.
 
 ---
 
