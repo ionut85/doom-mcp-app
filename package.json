@@ -1,0 +1,29 @@
+{
+  "name": "doom-player",
+  "private": true,
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build:engine": "bash engine/build.sh",
+    "get-wad": "bash scripts/get-wad.sh",
+    "play-cli": "tsx scripts/play-cli.ts",
+    "test": "vitest run",
+    "bench": "vitest run --project bench",
+    "typecheck": "tsc -p packages/doom-core --noEmit && tsc -p scripts --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@doom-player/doom-core": "workspace:*"
+  }
+}

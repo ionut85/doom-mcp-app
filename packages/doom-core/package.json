@@ -1,0 +1,9 @@
+{
+  "name": "@doom-player/doom-core",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@doom-player/engine": "workspace:*" }
+}

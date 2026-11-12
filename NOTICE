@@ -1,0 +1,15 @@
+doom-player
+Copyright (C) 2026 the doom-player authors. Licensed under the GNU GPL v2 (see LICENSE).
+
+This project includes or builds upon:
+
+- doomgeneric (https://github.com/ozkl/doomgeneric), GPL-2.0.
+  Based on Chocolate Doom (Simon Howard and contributors) and the DOOM
+  source code released by id Software under the GPL.
+- DOOM, Copyright (C) 1993-1996 id Software, Inc. "DOOM" is a trademark of
+  ZeniMax Media / id Software. This project is not affiliated with or
+  endorsed by id Software, ZeniMax or Bethesda.
+- Freedoom (https://freedoom.github.io), BSD-3-Clause. freedoom1.wad is
+  downloaded by scripts/get-wad.sh and is not an id Software asset.
+
+No id Software WAD files are distributed with this project.

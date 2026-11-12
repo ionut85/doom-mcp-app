@@ -1,0 +1,13 @@
+{
+  "name": "@doom-player/engine",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "exports": {
+    ".": { "types": "./doom.d.ts", "default": "./dist/doom.mjs" },
+    "./doom.wasm": "./dist/doom.wasm",
+    "./mobjtypes.json": "./dist/mobjtypes.json"
+  },
+  "files": ["dist", "doom.d.ts"]
+}

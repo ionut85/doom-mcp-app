@@ -1,0 +1,19 @@
+--- a/doomgeneric/d_loop.c
++++ b/doomgeneric/d_loop.c
+@@ -133,6 +133,8 @@
+     return (time_ms * TICRATE) / 1000;
+ }
+ 
++void DG_PostBuildTiccmd(ticcmd_t *cmd); // doom-player
++
+ static boolean BuildNewTic(void)
+ {
+     int	gameticdiv;
+@@ -176,6 +178,7 @@
+     //printf ("mk:%i ",maketic);
+     memset(&cmd, 0, sizeof(ticcmd_t));
+     loop_interface->BuildTiccmd(&cmd, maketic);
++    DG_PostBuildTiccmd(&cmd); // doom-player: exact ticcmd injection
+ 
+ #ifdef FEATURE_MULTIPLAYER
+ 

@@ -1,0 +1,11 @@
+node_modules/
+engine/build/
+wads/*.wad
+out/
+.env*
+!.env.example
+.vercel
+.next/
+dist-ui/
+*.log
+.DS_Store
