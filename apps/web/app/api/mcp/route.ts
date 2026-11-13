@@ -21,8 +21,10 @@ Directions:
 - "heading" is a compass bearing: 0 = north, 90 = east, 180 = south, 270 = west. doom_turn(+30) adds 30 to it. The map is drawn north-up.
 
 Fighting:
-- To shoot an enemy: doom_turn(enemy.turn), then doom_act fire for 7-14 tics. "in_crosshair": true means a shot will hit. Hitscan weapons only auto-aim vertically, so turn precisely first.
-- Health below 30: back off out of sight and pick up stimpacks / medikits.
+- To shoot an enemy: doom_turn(enemy.turn), then doom_act fire for 7-14 tics, then look again (enemies move, so "turn" changes). "in_crosshair": true means a shot will hit. Hitscan weapons only auto-aim vertically, so turn precisely first.
+- The pistol is weak and misses a lot beyond ~300 units: close in, or switch to the shotgun (weapon_3) as soon as you pick one up.
+- Against several enemies, don't stand in the open: back out of their line of sight into a doorway or corridor and let them come to you one at a time.
+- Back off before health drops below 40, and pick up stimpacks / medikits (nearby_items) when hurt.
 - Shoot explosive barrels near groups of enemies, but not when you are within ~150 units of one.
 
 Moving and exploring (state/both perception includes a map and an "interactives" list):

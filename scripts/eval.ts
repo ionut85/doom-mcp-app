@@ -98,6 +98,9 @@ class Scorer {
   readonly cells = new Set<string>();
   damage = 0;
   deaths = 0;
+  /** kills from earlier lives: dying restarts the level, which resets DOOM's kill counter */
+  killsBanked = 0;
+  itemsBanked = 0;
   exited = false;
   last: Stats;
   readonly start: { x: number; y: number };
@@ -122,6 +125,8 @@ class Scorer {
       this.damage += Math.max(0, p.health - s.health) + Math.max(0, p.armor - s.armor);
     }
     if (!p.dead && s.dead) this.deaths++;
+    if (s.kills < p.kills) this.killsBanked += p.kills;
+    if (s.items < p.items) this.itemsBanked += p.items;
     if (s.gamestate === "intermission" || s.map !== p.map) this.exited = true;
     this.visit(s);
     this.last = s;
@@ -302,9 +307,9 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
       tool_counts: toolCounts,
       tool_errors: errors,
       nudges,
-      kills: last.kills,
+      kills: scorer.killsBanked + last.kills,
       total_kills: last.total_kills,
-      items: last.items,
+      items: scorer.itemsBanked + last.items,
       secrets: last.secrets,
       damage_taken: scorer.damage,
       deaths: scorer.deaths,
