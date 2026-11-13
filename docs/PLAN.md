@@ -144,7 +144,7 @@ claude-plays-doom/
 ### Phase 4: MCP App viewer
 - [x] `ui://doom/viewer` resource (single-file HTML), linked from `doom_new_game`; `doom_frame` app-only polling; captions; human "Play yourself" mode.
 - [x] Test with an MCP Apps-capable test host *(our own `/dev/host` on AppBridge; installing the ext-apps repo's basic host was blocked by the agent sandbox)*.
-- [ ] Test the full viewer in **Claude (web + desktop)** as a custom connector.
+- [x] Test the full viewer in **Claude** as a custom connector *(confirmed working by the user on 2026-11-13: the viewer updates live while Claude plays; Play yourself works)*.
 - **Done when:** in claude.ai, "Start a game of DOOM and play it" shows the inline viewer updating while Claude plays.
 
 ### Phase 5: Play quality
@@ -264,6 +264,7 @@ claude-plays-doom/
 - **Cross-host determinism verified.** `/play?selftest=1` replays the seeded log from `doom-core/selftest.ts`, and the browser gives the same state and frame hashes as Node. The hashes are pinned in a Node test, so CI catches drift.
 
 ### Phase 4 results
+- **Verified in claude.ai on 2026-11-13** (by the user). With the custom connector, Claude plays and the inline viewer updates live. Play yourself works too, so Claude's host permits wasm and our declared asset domain.
 - **Viewer.** It shows:
   - a header with map, skill and perception badge, and a mode badge ("Claude is playing" / "You're playing");
   - the 4:3 screen, a "replaying…" indicator on cache-miss polls, and banners for death and level complete;
