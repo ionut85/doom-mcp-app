@@ -266,15 +266,21 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
     messages.push({ role: "user", content: results });
     transcript.push({
       role: "tool_results",
-      results: results.map((r) => ({ error: r.is_error ?? false, text: (r.content as any[]).filter((c) => c.type === "text").map((c) => c.text.slice(0, 600)) })),
+      results: results.map((r) => ({
+        error: r.is_error ?? false,
+        text: typeof r.content === "string" ? [r.content] : (r.content ?? []).flatMap((c) => (c.type === "text" ? [c.text.slice(0, 600)] : [])),
+      })),
       stats: { hp: scorer.last.health, kills: scorer.last.kills, dead: scorer.last.dead, gamestate: scorer.last.gamestate },
     });
   }
   if (finish(scorer)) stop = "exit";
 
   const s = summarize();
-  fs.mkdirSync(path.join(OUT, runId), { recursive: true });
-  fs.writeFileSync(path.join(OUT, runId, "transcript.json"), JSON.stringify(transcript, null, 1));
+  try {
+    fs.writeFileSync(path.join(OUT, runId, "transcript.json"), JSON.stringify(transcript, null, 1));
+  } catch (e) {
+    console.error(`could not write transcript for ${runId}:`, e);
+  }
   return s;
 
   function summarize() {
