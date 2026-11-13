@@ -52,6 +52,13 @@
         <ol id="captions"><li class="muted">No moves yet.</li></ol>
       </section>
 
+      <div class="talk" id="talk" role="group" aria-label="Tell Claude" hidden>
+        <input id="talk-text" type="text" maxlength="300" autocomplete="off" placeholder="Tell Claude what to do, e.g. go through the door on the left" aria-label="Message to Claude" />
+        <button type="button" id="mic-btn" hidden aria-label="Speak to Claude" title="Speak">🎤</button>
+        <button type="button" id="talk-send">Send</button>
+      </div>
+      <p class="talk-status muted" id="talk-status" hidden></p>
+
       <footer class="actions">
         <button type="button" class="primary" id="play-btn">Play yourself</button>
         <button type="button" id="watch-btn" hidden>Back to Claude's game</button>

@@ -59,7 +59,7 @@ export default function HostHarness() {
       const html: string = c.text.replace("<head>", `<head>${cspMeta(c._meta?.ui?.csp, wasm)}`);
       add(`resource: ${Math.round(html.length / 1024)} KB, csp ${JSON.stringify(c._meta?.ui?.csp)}`);
       const iframe = frameRef.current!;
-      const bridge = new AppBridge(null, { name: "doom-dev-host", version: "0.1.0" }, { serverTools: {}, logging: {} }, {
+      const bridge = new AppBridge(null, { name: "doom-dev-host", version: "0.1.0" }, { serverTools: {}, logging: {}, message: { text: {} } }, {
         hostContext: { theme: "dark", displayMode: "inline", availableDisplayModes: ["inline", "fullscreen"], platform: "web" },
       });
       bridge.oncalltool = async (params) => {
@@ -77,6 +77,11 @@ export default function HostHarness() {
         return { mode };
       };
       bridge.oninitialized = () => add("viewer initialized");
+      bridge.onmessage = async ({ role, content }) => {
+        const text = content.map((c) => (c.type === "text" ? c.text : `[${c.type}]`)).join(" ");
+        add(`viewer → chat (${role}): "${text}"`);
+        return {};
+      };
       if (cancelled) return;
       bridgeRef.current = bridge;
       // Listen before the view loads, so its ui/initialize request isn't missed.

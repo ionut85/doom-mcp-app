@@ -402,6 +402,114 @@ function wireTouchButtons(input: PlayerInput) {
 }
 
 // ---------------------------------------------------------------------------
+// Talk to Claude: type (or dictate) an instruction; it arrives in the chat as
+// the user's message, and Claude turns it into game actions.
+
+// Not a <form>: sandboxed iframes without allow-forms never fire "submit".
+const talkForm = $("talk");
+const talkText = $<HTMLInputElement>("talk-text");
+const talkStatus = $("talk-status");
+const micBtn = $<HTMLButtonElement>("mic-btn");
+type Recognition = {
+  lang: string; interimResults: boolean; continuous: boolean;
+  start(): void; stop(): void;
+  onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+};
+const SpeechRecognitionCtor = ((window as unknown as Record<string, unknown>).SpeechRecognition ??
+  (window as unknown as Record<string, unknown>).webkitSpeechRecognition) as (new () => Recognition) | undefined;
+let recognition: Recognition | null = null;
+
+function setTalkStatus(text: string) {
+  talkStatus.hidden = !text;
+  talkStatus.textContent = text;
+}
+
+async function sendToClaude(text: string) {
+  const msg = text.trim();
+  if (!msg) return;
+  setTalkStatus("Sending…");
+  try {
+    const r = await app.sendMessage({ role: "user", content: [{ type: "text", text: msg }] });
+    if (r.isError) throw new Error("the host declined the message");
+    talkText.value = "";
+    setTalkStatus(`Sent: "${msg}"`);
+    diag.lastMessage = msg;
+  } catch (e) {
+    setTalkStatus(`Couldn't send it: ${e instanceof Error ? e.message : e}. Type it in the chat instead.`);
+    diag.messageError = String(e);
+  }
+  showDiag();
+}
+
+$("talk-send").onclick = () => void sendToClaude(talkText.value);
+talkText.onkeydown = (e) => {
+  if (e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    void sendToClaude(talkText.value);
+  }
+};
+
+function toggleListening() {
+  if (recognition) {
+    recognition.stop();
+    return;
+  }
+  if (!SpeechRecognitionCtor) return;
+  const rec = new SpeechRecognitionCtor();
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = true;
+  rec.continuous = false;
+  let finalText = "";
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i]!;
+      if (res.isFinal) finalText += res[0]!.transcript;
+      else interim += res[0]!.transcript;
+    }
+    talkText.value = (finalText + interim).trim();
+  };
+  rec.onerror = (e) => {
+    const reason =
+      e.error === "not-allowed" || e.error === "service-not-allowed"
+        ? "The microphone isn't available here. Type instead."
+        : e.error === "network"
+          ? "The browser's speech service couldn't be reached. Type instead."
+          : e.error === "no-speech"
+            ? "Didn't catch that. Try again."
+            : `Speech recognition stopped (${e.error}).`;
+    setTalkStatus(reason);
+    diag.speechError = e.error;
+    showDiag();
+  };
+  rec.onend = () => {
+    recognition = null;
+    micBtn.classList.remove("listening");
+    if (finalText.trim()) void sendToClaude(finalText);
+  };
+  try {
+    rec.start();
+    recognition = rec;
+    micBtn.classList.add("listening");
+    setTalkStatus("Listening… say what Claude should do.");
+  } catch (e) {
+    setTalkStatus("The microphone isn't available here. Type instead.");
+    diag.speechError = String(e);
+  }
+}
+micBtn.onclick = toggleListening;
+
+/** Show the talk box only when the host accepts messages from the app. */
+function updateTalk() {
+  const caps = app.getHostCapabilities?.() as { message?: unknown } | undefined;
+  talkForm.hidden = !caps?.message;
+  micBtn.hidden = !SpeechRecognitionCtor;
+  diag.talk = { hostAcceptsMessages: !!caps?.message, speechRecognition: !!SpeechRecognitionCtor };
+}
+
+// ---------------------------------------------------------------------------
 // Host connection
 
 const app = new App({ name: "DOOM viewer", version: "0.4.0" });
@@ -464,6 +572,7 @@ app
     diag.connected = true;
     diag.hostVersion = app.getHostVersion?.();
     updateFullscreenButton();
+    updateTalk();
     showDiag();
   })
   .catch((e) => {

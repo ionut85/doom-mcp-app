@@ -62,6 +62,8 @@ const handler = createMcpHandler(
                 prefersBorder: true,
                 // "Play yourself" loads the engine glue (module script), wasm and WAD from our own domain.
                 csp: { resourceDomains: [origin], connectDomains: [origin] },
+                // Optional: push-to-talk in the viewer ("Tell Claude" by voice). Hosts may refuse it; typing still works.
+                permissions: { microphone: {} },
               },
             },
           },
