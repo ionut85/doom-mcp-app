@@ -209,7 +209,38 @@ async function guarded(req: Request): Promise<Response> {
   if (req.method === "POST" && !(await rateLimit(ip))) {
     return new Response(JSON.stringify({ error: "rate limited" }), { status: 429, headers: { "content-type": "application/json", "retry-after": "10" } });
   }
-  return handler(req);
+  if (req.method !== "POST") return handler(req);
+  // One log line when a request starts and one when its response body ends, so a
+  // request that hangs shows up as a start with no end.
+  const t0 = performance.now();
+  const body = await req.text();
+  const info = describeRpc(body);
+  const meta = { ...info, pv: req.headers.get("mcp-protocol-version"), ua: req.headers.get("user-agent")?.slice(0, 40) };
+  console.log(JSON.stringify({ evt: "mcp_start", ...meta }));
+  const res = await handler(new Request(req.url, { method: "POST", headers: req.headers, body }));
+  if (!res.body) return res;
+  let bytes = 0;
+  const counted = res.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, c) {
+        bytes += chunk.byteLength;
+        c.enqueue(chunk);
+      },
+      flush() {
+        console.log(JSON.stringify({ evt: "mcp_end", ...meta, status: res.status, bytes, ms: Math.round(performance.now() - t0) }));
+      },
+    }),
+  );
+  return new Response(counted, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
+function describeRpc(body: string) {
+  try {
+    const msgs = [JSON.parse(body)].flat() as { id?: unknown; method?: string; params?: { name?: string; uri?: string } }[];
+    return { rpc: msgs.map((m) => [m.method ?? "response", m.params?.name ?? m.params?.uri, m.id].filter((x) => x !== undefined).join(" ")).join(", ") };
+  } catch {
+    return { rpc: `unparsable (${body.length} bytes)` };
+  }
 }
 
 export { guarded as GET, guarded as POST, guarded as DELETE };
