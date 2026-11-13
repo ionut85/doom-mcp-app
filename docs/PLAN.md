@@ -148,9 +148,10 @@ claude-plays-doom/
 - **Done when:** in claude.ai, "Start a game of DOOM and play it" shows the inline viewer updating while Claude plays.
 
 ### Phase 5: Play quality
-- [ ] Tune tool descriptions + server instructions; a system-prompt-style "how to play DOOM" guide in the server `instructions`.
-- [ ] Evaluate 5 runs per perception mode on E1M1 (skill 2 and 3): kills, damage taken, distance explored, exits reached, tokens/action. Record results in `docs/EVAL.md`. Good slide material.
-- [ ] Optional ASCII local map; optional `doom_aim_nearest` assist.
+- [x] Tune tool descriptions + server instructions; a system-prompt-style "how to play DOOM" guide in the server `instructions`.
+- [x] Evaluate 5 runs per perception mode on E1M1 (skill 2 and 3): kills, damage taken, distance explored, exits reached, tokens/action. Record results in `docs/EVAL.md`. Good slide material.
+- [x] Optional ASCII local map *(done, in state/both perception)*.
+- [ ] Optional `doom_aim_nearest` assist *(not built: `turn` + `in_crosshair` already make aiming reliable)*.
 
 ### Phase 6: Demo polish
 - [ ] Smooth local replay in the viewer (stretch).
@@ -279,6 +280,15 @@ claude-plays-doom/
 - **Input fixes found while testing.** Key taps shorter than one tic are latched for one tic, and clicks fire when pointer lock is refused (common in sandboxed iframes).
 - **Known.** The bundled SDK (zod) probes `eval`, which shows up as a CSP violation in strict hosts. It falls back without eval, so it's harmless.
 - **Dev harness.** `/dev/host` (404 in production) is a minimal MCP Apps host for local viewer testing. It renders the viewer in an opaque-origin sandbox with a CSP built only from the declared domains, forwards tool calls, and can script "Claude" moves.
+
+### Phase 5 results
+- **Eval harness.** `pnpm eval`, with `pnpm eval:report` for the table and `scripts/eval-timeline.ts` for reading transcripts. Results are in `docs/EVAL.md`, with the analysis in `docs/eval/NOTES.md`.
+- **Map awareness (v2).** The engine exports linedefs. State observations gain:
+  - `turn` values that are exactly the `doom_turn` argument, and a compass `heading`;
+  - nearby `interactives` (doors with open/closed state and key color, switches, lifts, exits, `in_use_range`);
+  - a 21×21 north-up ASCII map with the cells visited this session.
+- **Headline numbers** (Opus 5.5, medium effort, 50 actions, skill 3): 5.4–6.0 kills with structured state vs 3.2 vision-only vs 2 for a scripted bot. No run reached the exit: 50 actions is only ~22 s of game time. Cost per run: $0.51 (vision) to $0.80 (both).
+- **Open question.** Can Claude finish E1M1 with a much longer budget? That needs runs of a few hundred actions; the cost grows faster than linearly with the budget.
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool

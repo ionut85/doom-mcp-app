@@ -74,10 +74,8 @@ const md = [
   "",
   ...table,
   "",
-  "## Notes",
-  "",
-  "See `docs/PLAN.md` (Phase 5 results) for the setup, the failure modes found in the transcripts, and what changed between labels.",
-  "",
 ].join("\n");
-fs.writeFileSync(path.join(ROOT, "docs/EVAL.md"), md);
-console.log(md);
+const notesPath = path.join(ROOT, "docs/eval/NOTES.md");
+const notes = fs.existsSync(notesPath) ? "\n" + fs.readFileSync(notesPath, "utf8") : "";
+fs.writeFileSync(path.join(ROOT, "docs/EVAL.md"), md + notes);
+console.log(md + notes);
