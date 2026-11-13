@@ -78,3 +78,55 @@ Short, concrete commands work best. Each becomes a handful of tool calls. Voice 
 - **Virtual time.** The game only moves when Claude acts, so it can think as long as it likes.
 - **Determinism.** A game is just its list of inputs. Any server, or your browser, can rebuild it exactly. That's how the viewer plays smoothly, how "Play yourself" takes over mid-game, and how `/replay` re-renders the winning run.
 - **What a move costs.** About $0.01 per move with prompt caching (50-move runs: $0.51–0.80).
+
+## Testing in ChatGPT
+
+ChatGPT implements the same MCP Apps standard as Claude, so the same server and viewer should work there, but nobody has tested it yet. This checklist is for a first run.
+- The viewer names the assistant after the host, so it should read "ChatGPT is playing" there.
+- When something fails, expand **Diagnostics** at the bottom of the viewer and copy its JSON into the results. It shows what ChatGPT allowed or blocked.
+
+### What you need
+
+- **A ChatGPT plan with full MCP support.** Business, Enterprise or Edu, where full MCP is in beta. Pro may only allow read-only tools, which wouldn't let the game's actions run.
+- **Developer mode, switched on by a workspace admin.** It's in the workspace's admin settings (around *Permissions & roles → Connected data*); menu names vary by plan. Then each user turns it on under *Settings → Apps → Advanced settings*.
+- **ChatGPT on the web** for the first run. Mobile comes later in the checklist.
+
+### Setup
+
+1. With Developer mode on, create a new app (connector) with:
+   - **Name:** DOOM
+   - **MCP server URL:** `https://doom-player.vercel.app/api/mcp`
+   - **Authentication:** none
+2. Start a new chat and enable the DOOM app for it.
+
+### Checks
+
+| # | Do | Expected | If not, note |
+|---|---|---|---|
+| 1 | Look at the app's tool list | `doom_new_game`, `doom_act`, `doom_turn`, `doom_observe`. The viewer-only tools (`doom_frame`, `doom_log`, `doom_stats`) should not be offered to the model | Which tools appear. If the viewer-only ones show up, ChatGPT ignores `visibility: ["app"]` |
+| 2 | Send "Start a game of DOOM" | The DOOM viewer renders inline under the reply, with the header saying **ChatGPT is playing** and the E1M1 start frame | Whether a viewer appears at all. If the header says Claude, note `hostName` in Diagnostics |
+| 3 | Send "Clear E1M1 by yourself. Caption every move." | The game moves, captions update under the screen, and the header badge says **35 FPS** (smooth playback) | Badge says *still frames* or *loading engine…* → note `smoothError` and `cspViolations` |
+| 4 | Let it play | It keeps playing until it stops on its own | How many moves before it stops; whether "continue" resumes it |
+| 5 | Click **Play yourself**, then click the screen and use WASD / Space / Ctrl | You play from the assistant's position; **Back to ChatGPT's game** returns | The error text shown next to the button, plus Diagnostics |
+| 6 | Look under the move list for the **Tell ChatGPT** box. Type "turn around and walk forward", press Enter | The text appears in the chat as your message and ChatGPT makes the moves | Box missing → note `talk.hostAcceptsMessages`. Sent but nothing happens → note `messageError` |
+| 7 | Click **🎤** and say "open the door in front of you" | ChatGPT or the browser asks for the microphone; the words are sent when you stop | Note `speechError`, and whether any permission prompt appeared |
+| 8 | Click **Fullscreen** (if shown) | The viewer goes fullscreen | Whether the button appears, and what happens |
+| 9 | Repeat 2–3 in the ChatGPT phone app | The viewer renders and updates | What the phone shows |
+| 10 | Try ChatGPT's voice mode: "start a game of DOOM and walk forward" | It calls the DOOM tools and the viewer appears | Whether tools run in voice mode at all |
+
+### Results
+
+| # | Pass / fail | Notes / Diagnostics |
+|---|---|---|
+| 1 | | |
+| 2 | | |
+| 3 | | |
+| 4 | | |
+| 5 | | |
+| 6 | | |
+| 7 | | |
+| 8 | | |
+| 9 | | |
+| 10 | | |
+
+Tester, date, plan, browser:

@@ -59,7 +59,9 @@ export default function HostHarness() {
       const html: string = c.text.replace("<head>", `<head>${cspMeta(c._meta?.ui?.csp, wasm)}`);
       add(`resource: ${Math.round(html.length / 1024)} KB, csp ${JSON.stringify(c._meta?.ui?.csp)}`);
       const iframe = frameRef.current!;
-      const bridge = new AppBridge(null, { name: "doom-dev-host", version: "0.1.0" }, { serverTools: {}, logging: {}, message: { text: {} } }, {
+      // ?host=chatgpt reports a different host name, to test host-specific viewer behaviour.
+      const hostName = new URLSearchParams(location.search).get("host") ?? "doom-dev-host";
+      const bridge = new AppBridge(null, { name: hostName, version: "0.1.0" }, { serverTools: {}, logging: {}, message: { text: {} } }, {
         hostContext: { theme: "dark", displayMode: "inline", availableDisplayModes: ["inline", "fullscreen"], platform: "web" },
       });
       bridge.oncalltool = async (params) => {

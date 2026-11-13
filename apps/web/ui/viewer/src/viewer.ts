@@ -56,6 +56,8 @@ document.addEventListener("securitypolicyviolation", (e) => {
   showDiag();
 });
 
+/** Who is playing: the host's assistant. "Claude" unless the host reports otherwise (see applyHostName). */
+let AI = "Claude";
 let sessionId: string | null = null;
 let version = -1;
 let inflight = false;
@@ -107,7 +109,7 @@ function renderHud(h: Hud, tic?: number) {
   const banner = $("banner");
   banner.hidden = h.status === "alive";
   banner.classList.toggle("good", h.status === "level_complete");
-  banner.textContent = h.status === "dead" ? (mode === "watch" ? "Claude died" : "You died · press use") : h.status === "level_complete" ? "Level complete!" : h.status;
+  banner.textContent = h.status === "dead" ? (mode === "watch" ? `${AI} died` : "You died · press use") : h.status === "level_complete" ? "Level complete!" : h.status;
 }
 
 function renderCaptions(list: Caption[]) {
@@ -291,7 +293,7 @@ async function startPlaying() {
     let opts = { skill: last?.skill ?? 3, episode: last?.episode ?? 1, map: last?.map ?? 1 };
     let steps: TicStep[] = [];
     if (sessionId) {
-      hint.textContent = "Fetching Claude's moves…";
+      hint.textContent = `Fetching ${AI}'s moves…`;
       const r = await app.callServerTool({ name: "doom_log", arguments: { session_id: sessionId } });
       const log = r.structuredContent as LogResult | undefined;
       if (!log || r.isError) throw new Error("could not fetch the game log");
@@ -335,7 +337,7 @@ async function startPlaying() {
     btn.hidden = true;
     $("watch-btn").hidden = false;
     hint.textContent = steps.length
-      ? "You took over from Claude's position. This copy runs in your browser; Claude's game is unaffected."
+      ? `You took over from ${AI}'s position. This copy runs in your browser; ${AI}'s game is unaffected.`
       : "A local game. Click the screen, then WASD/arrows to move, click or Ctrl to fire, Space to open doors.";
   } catch (e) {
     diag.playError = String(e);
@@ -357,7 +359,7 @@ function stopPlaying() {
   player = null;
   mode = "watch";
   appEl.dataset.mode = "watch";
-  $("mode-badge").textContent = "Claude is playing";
+  $("mode-badge").textContent = `${AI} is playing`;
   $("pad").hidden = true;
   $("play-btn").hidden = false;
   $("watch-btn").hidden = true;
@@ -493,13 +495,27 @@ function toggleListening() {
     rec.start();
     recognition = rec;
     micBtn.classList.add("listening");
-    setTalkStatus("Listening… say what Claude should do.");
+    setTalkStatus(`Listening… say what ${AI} should do.`);
   } catch (e) {
     setTalkStatus("The microphone isn't available here. Type instead.");
     diag.speechError = String(e);
   }
 }
 micBtn.onclick = toggleListening;
+
+/** Name the assistant after the host, so the viewer reads right in ChatGPT as well as Claude. */
+function applyHostName() {
+  const host = app.getHostVersion?.()?.name ?? "";
+  AI = /chatgpt|openai/i.test(host) ? "ChatGPT" : "Claude";
+  if (mode === "watch") $("mode-badge").textContent = `${AI} is playing`;
+  $("captions-title").textContent = `${AI}'s moves`;
+  talkForm.setAttribute("aria-label", `Tell ${AI}`);
+  talkText.placeholder = `Tell ${AI} what to do, e.g. go through the door on the left`;
+  talkText.setAttribute("aria-label", `Message to ${AI}`);
+  micBtn.setAttribute("aria-label", `Speak to ${AI}`);
+  $("watch-btn").textContent = `Back to ${AI}'s game`;
+  diag.hostName = host;
+}
 
 /** Show the talk box only when the host accepts messages from the app. */
 function updateTalk() {
@@ -572,6 +588,7 @@ app
     diag.connected = true;
     diag.hostVersion = app.getHostVersion?.();
     updateFullscreenButton();
+    applyHostName();
     updateTalk();
     showDiag();
   })
