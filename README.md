@@ -117,7 +117,7 @@ Four ideas make it work:
 | **Virtual time** | The engine's clock only moves when Claude acts. Each call advances an exact number of tics (35 tics = 1 s), then the game freezes. |
 | **Deterministic replay** | Serverless functions don't keep a game in memory. A session is just the list of inputs, stored in Redis; any instance rebuilds the exact game by replaying it (~14 ms for 5 minutes of play). A warm cache skips replay most of the time. |
 | **Exact controls** | Inputs go straight into DOOM's per-tic command (`ticcmd`) through a 3-line patch, so "turn 37.5° right" is exact. That makes aiming at enemies by their relative angle work. |
-| **Perception modes** | Each action returns a 640×400 screenshot (`vision`), structured state such as enemies with distance, angle and `in_crosshair` (`state`), or both (`both`, the default). |
+| **Perception modes** | Each action returns a 640×400 screenshot (`vision`), structured state such as enemies with distance, `turn` and `in_crosshair`, nearby doors and a mini-map (`state`), or both (`both`, the default). |
 
 There's an interactive walkthrough of one action, end to end, in the [architecture explainer](https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1).
 
@@ -206,7 +206,7 @@ claude mcp add --transport http doom-local http://localhost:3000/api/mcp
 |---|---|---|
 | `doom_new_game` | Claude | Starts a game: `skill` 1–5 (default 3), `episode`, `map`, and `perception` (`vision` \| `state` \| `both`). Shows the inline viewer and returns a `session_id`. |
 | `doom_act` | Claude | Holds actions for a number of tics, up to 8 steps and 105 tics per call. Actions: `forward`, `back`, `strafe_left`, `strafe_right`, `turn_left`, `turn_right`, `run`, `fire`, `use`, `weapon_1`…`weapon_7`. Takes an optional `caption` shown in the viewer. |
-| `doom_turn` | Claude | Turns by exact degrees: negative = left, positive = right, the same convention as enemy angles. |
+| `doom_turn` | Claude | Turns by exact degrees: negative = left, positive = right. Every `turn` value in an observation is the exact argument to face that thing. |
 | `doom_observe` | Claude | Returns the current observation without advancing time. |
 | `doom_frame` | Viewer only | Returns the latest frame, HUD and captions for the inline viewer. Hidden from Claude via `visibility: ["app"]`. |
 | `doom_log` | Viewer only | Returns the session's input log, so **Play yourself** can rebuild Claude's game in the browser and hand you the controls from Claude's exact position. |
@@ -216,12 +216,21 @@ An observation in `state` or `both` mode looks like this, shortened:
 ```json
 {
   "status": "alive", "health": 87, "armor": 0, "weapon": "pistol", "ammo": 42, "kills": "3/29",
-  "enemies": [{ "type": "imp", "distance": 412, "angle": -12.5, "on_screen": true, "in_crosshair": false, "health": 60 }],
-  "nearby_items": [{ "type": "stimpack", "distance": 289, "angle": -59.6 }],
+  "heading": 90, "heading_name": "east",
+  "enemies": [{ "type": "imp", "distance": 412, "turn": -12.5, "on_screen": true, "in_crosshair": false, "health": 60 }],
+  "nearby_items": [{ "type": "stimpack", "distance": 289, "turn": -59.6 }],
+  "interactives": [{ "kind": "door", "how": "use", "state": "closed", "distance": 298, "turn": -20, "in_use_range": false }],
+  "map": ["       #####  ", "  ######  D###", "  #...@>    = ", "..."],
   "events": ["took 8 damage from 30° left", "killed 1 enemy", "moved 96 units"],
-  "hint": "Nearest enemy is 12° left; doom_turn by its angle to aim."
+  "hint": "Nearest enemy is 12° left: doom_turn(-12.5) to aim, then fire."
 }
 ```
+
+- Every `turn` value is the exact argument for `doom_turn`: negative = left, positive = right.
+- `heading` is a compass bearing (0 = north, clockwise).
+- `interactives` lists nearby doors, switches, lifts and exits.
+- `map` is a 21×21 north-up ASCII map, one character per 64×64 map units. It marks walls, doors, switches, the exit, enemies, items and the cells you've already visited.
+- Vision-only play gets none of this: just the screenshot and the HUD numbers.
 
 Limits per session: 30,000 tics (about 14 minutes of game time), a 24 h lifetime, and 300 requests per minute per IP.
 
