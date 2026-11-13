@@ -8,7 +8,9 @@
 <p align="center">
   <a href="https://doom-mcp.vercel.app"><b>Landing page</b></a> &middot;
   <a href="#install"><b>Add it to ChatGPT or Claude</b></a> &middot;
-  <a href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a>
+  <a href="https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1">Architecture explainer</a> &middot;
+  <a href="https://doom-player.vercel.app/replay">Watch Claude clear E1M1</a> &middot;
+  <a href="docs/DEMO.md">Demo script</a>
 </p>
 
 An experiment in how far **MCP Apps** can go. DOOM runs headless on a server as WebAssembly, exposed as a remote [MCP](https://modelcontextprotocol.io) server with an inline [MCP App](https://modelcontextprotocol.io/extensions/apps/overview) viewer. The model sees the game (a screenshot, structured state, or both) and plays it through tool calls. The game is frozen between calls, so the model can take as long as it likes to think.
@@ -93,18 +95,25 @@ Real frames from the engine in this repo (Freedoom E1M1). The state says a zombi
 flowchart LR
   subgraph app["Claude app"]
     C["Claude"]
-    V["Inline viewer<br/>(MCP App iframe)"]
+    subgraph V["Inline viewer (MCP App iframe)"]
+      VE["Own DOOM engine (wasm)<br/>smooth 35 fps playback<br/>and Play yourself"]
+    end
   end
-  subgraph fn["Vercel function · /api/mcp"]
-    M["MCP endpoint<br/>(Next.js + mcp-handler)"]
-    G["Game service<br/>(cache · replay · observe)"]
-    E["DOOM engine<br/>(doomgeneric → wasm)"]
+  subgraph vercel["Vercel"]
+    subgraph fn["Function · /api/mcp"]
+      M["MCP endpoint<br/>(Next.js + mcp-handler)"]
+      G["Game service<br/>(cache · replay · observe)"]
+      E["DOOM engine<br/>(doomgeneric → wasm)"]
+    end
+    S["Static assets /doom/*<br/>engine + Freedoom WAD"]
   end
   R[("Upstash Redis<br/>session = input log")]
 
   C -- "doom_act / doom_turn" --> M
-  M -- "PNG + JSON state" --> C
-  V -- "doom_frame (app-only, polled)" --> M
+  M -- "PNG + JSON state + map" --> C
+  V -- "doom_frame + doom_log<br/>(app-only, polled)" --> M
+  V -- "Tell Claude (typed or spoken)" --> C
+  VE -. "loads once" .-> S
   M --> G
   G <--> E
   G <--> R

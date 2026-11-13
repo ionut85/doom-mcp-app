@@ -1,0 +1,25 @@
+.page {
+  --bg: #0d0a09; --panel: #18120f; --line: #3a2c25; --fg: #eee4da; --muted: #a7978a; --accent: #e2531f; --hud: #e7a83e; --ok: #6cc07a;
+  min-height: 100dvh; background: var(--bg); color: var(--fg);
+  display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.inner { width: min(100%, 960px); margin: 0 auto; display: grid; gap: 12px; }
+.title { margin: 0; font-size: 20px; letter-spacing: .02em; }
+.title a { color: var(--muted); text-decoration: none; font-weight: 400; }
+.meta { color: var(--muted); margin: 0; }
+.screen { width: 100%; aspect-ratio: 4 / 3; background: #000; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.screen canvas { width: 100%; height: 100%; display: block; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.controls button, .controls select {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; font: inherit; cursor: pointer;
+}
+.controls button:hover:not(:disabled) { border-color: var(--hud); }
+.controls button:disabled { opacity: .5; cursor: default; }
+.controls .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.controls .rec { border-color: var(--accent); }
+.status { color: var(--muted); font-variant-numeric: tabular-nums; }
+.download { color: var(--hud); }
+.note { color: var(--muted); font-size: 12.5px; margin: 0; max-width: 70ch; }

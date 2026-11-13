@@ -154,10 +154,10 @@ claude-plays-doom/
 - [ ] Optional `doom_aim_nearest` assist *(not built: `turn` + `in_crosshair` already make aiming reliable)*.
 
 ### Phase 6: Demo polish
-- [ ] Smooth local replay in the viewer (stretch).
-- [ ] `docs/DEMO.md`: exact prompts for the three modes (autonomous, directed/voice, human), fallback plan (pre-recorded video, Claude Code backup), known failure modes.
-- [ ] `docs/voice.md` findings.
-- [ ] README with architecture diagram (Mermaid): Claude ⇄ MCP (Vercel) ⇄ Redis log ⇄ wasm engine; viewer ⇄ `doom_frame`.
+- [x] Smooth local replay in the viewer (stretch).
+- [x] `docs/DEMO.md`: exact prompts for the three modes (autonomous, directed/voice, human), fallback plan (pre-recorded video, Claude Code backup), known failure modes.
+- [x] `docs/voice.md` findings.
+- [x] README with architecture diagram (Mermaid): Claude ⇄ MCP (Vercel) ⇄ Redis log ⇄ wasm engine; viewer ⇄ `doom_frame`.
 
 ## 5. Working agreements for Claude Code
 - Verify the current docs of `@modelcontextprotocol/ext-apps`, `mcp-handler`, Next.js and Upstash before coding against them; note any deviations from this plan in `docs/PLAN.md`.
@@ -289,6 +289,17 @@ claude-plays-doom/
   - a 21×21 north-up ASCII map with the cells visited this session.
 - **Headline numbers** (Opus 5.5, medium effort, 50 actions, skill 3): 5.4–6.0 kills with structured state vs 3.2 vision-only vs 2 for a scripted bot. No run reached the exit: 50 actions is only ~22 s of game time. Cost per run: $0.51 (vision) to $0.80 (both).
 - **Claude finishes E1M1.** With a 200-action budget (`both` perception, one run each), Claude reached the exit at skill 2 in 74 actions ($1.35) and at skill 3 in 140 actions ($3.43), without dying.
+
+### Phase 6 results
+- **Smooth playback.** The viewer runs its own engine. It fetches only new moves (`doom_log` with `from`) and plays them at 35 tics/s: 2× when more than 3 s behind, an instant catch-up when more than 10 s behind. `doom_frame` skips the PNG (`include_frame: false`), and the HUD follows the local engine. After each drain, the local tic must equal the server's, or the viewer resyncs.
+  - Verified in `/dev/host`: no resyncs, and the final HUD matches the server's state.
+  - It falls back to server frames if the engine can't load, and there's a toggle in the viewer.
+- **Tell Claude.** A box in the viewer posts typed or dictated (Web Speech API) instructions into the chat with `app.sendMessage`. It's shown only when the host advertises `message`. The resource requests `permissions.microphone`.
+  - The typed path is verified in `/dev/host`.
+  - Microphone and claude.ai behaviour still need a manual test; steps are in `docs/voice.md`.
+  - The box doesn't use a `<form>`: sandboxed iframes without `allow-forms` never fire `submit`.
+- **`/replay`.** Re-renders saved runs (`apps/web/public/replays/*.json`: input log plus captions with tics, exported by `scripts/export-replay.ts` and verified to reach the exit) at 0.5–4×, with Claude's captions burned in. **Record video** saves a WebM through `MediaRecorder`, the demo's fallback video.
+- **Docs.** `docs/DEMO.md` is the run-sheet (prompts for three modes, checklist, fallbacks, talking points). `docs/voice.md` covers voice. The README diagram is updated.
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool
