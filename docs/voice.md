@@ -48,7 +48,7 @@ Claude's voice conversation mode may or may not call connector tools and render 
 2. Start a voice conversation and say "Start a game of DOOM and walk forward".
 3. See whether tool calls happen and whether the viewer appears.
 
-Record the result here.
+**Result, 2026-11-13, Claude Desktop:** doesn't work. In voice mode Claude says it can't reach the game controls, and no DOOM tool calls reach our server. The server logs show nothing but the app's background listen request. The same connector works in a typed chat in the same app. This is on Claude's side, and our server can't change it: there are public reports of custom connector tools failing in voice mode with "tool is not registered" while text mode works. Retest when Claude ships voice-mode changes. Until then, use dictation (section 1) or the viewer's 🎤 (section 2).
 
 ## Recommendation for the talk
 
