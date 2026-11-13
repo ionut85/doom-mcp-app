@@ -136,15 +136,19 @@ const handler = createMcpHandler(
       {
         title: "DOOM: viewer frame",
         description: "App-only: latest frame, HUD and captions for the inline viewer. Returns {unchanged: true} if the session version equals since_version.",
-        inputSchema: z.object({ session_id: sessionId, since_version: z.number().int().optional() }),
+        inputSchema: z.object({
+          session_id: sessionId,
+          since_version: z.number().int().optional(),
+          include_frame: z.boolean().default(true).describe("false when the viewer renders frames itself (smooth playback)"),
+        }),
         _meta: { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } },
       },
-      async ({ session_id, since_version }) => {
+      async ({ session_id, since_version, include_frame }) => {
         const s = await sessionStore().get(session_id);
         if (since_version !== undefined && s.version === since_version) {
           return { content: [{ type: "text", text: "unchanged" }], structuredContent: { unchanged: true, version: s.version } };
         }
-        const f = await frame(session_id);
+        const f = await frame(session_id, include_frame);
         return {
           content: [{ type: "text", text: `version ${f.session.version}` }],
           structuredContent: {
@@ -159,7 +163,7 @@ const handler = createMcpHandler(
             captions: f.session.captions.slice(0, 8),
             replayed: !f.cacheHit,
             replay_tics: f.replayTics,
-            frame: f.png.toString("base64"),
+            ...(f.png ? { frame: f.png.toString("base64") } : {}),
           },
         };
       },
@@ -170,12 +174,12 @@ const handler = createMcpHandler(
       "doom_log",
       {
         title: "DOOM: input log",
-        description: "App-only: the session's full input log, so the viewer can rebuild the game locally (take over from Claude).",
-        inputSchema: z.object({ session_id: sessionId }),
+        description: "App-only: the session's input log from step `from` on, so the viewer can rebuild the game locally (smooth playback, take over from Claude).",
+        inputSchema: z.object({ session_id: sessionId, from: z.number().int().min(0).default(0) }),
         _meta: { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } },
       },
-      async ({ session_id }) => {
-        const log = await inputLog(session_id);
+      async ({ session_id, from }) => {
+        const log = await inputLog(session_id, from);
         return { content: [{ type: "text", text: `${log.steps.length} steps` }], structuredContent: log };
       },
     );

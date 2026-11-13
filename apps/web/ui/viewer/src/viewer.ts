@@ -1,5 +1,7 @@
 // Inline DOOM viewer (MCP App). Two modes:
-//  - watch: follows Claude's session by polling the app-only doom_frame tool;
+//  - watch: follows Claude's session by polling the app-only doom_frame tool.
+//           With smooth playback (default), the viewer replays Claude's moves in
+//           its own engine at 35 tics/s; otherwise it shows the server's frames;
 //  - play:  "Play yourself" rebuilds Claude's game locally from its input log
 //           (doom_log + deterministic replay) and hands the controls to the user.
 //           Claude's server-side game is not affected.
@@ -8,6 +10,7 @@ import type { TicStep } from "@doom-player/doom-core/core";
 import { PlayerInput } from "../../../lib/play/input";
 import { GameLoop } from "../../../lib/play/loop";
 import { loadEngine } from "../../../lib/play/load";
+import { SmoothPlayer } from "./smooth";
 
 // Replaced by the server when it serves the resource (lib/assets.ts).
 const ORIGIN = "__DOOM_PUBLIC_ORIGIN__";
@@ -31,7 +34,11 @@ type FrameResult = {
   replayed?: boolean;
   replay_tics?: number;
 };
-type LogResult = { skill: number; episode: number; map: number; version: number; steps: [number, number, number, number, number][] };
+type LogResult = {
+  skill: number; episode: number; map: number; version: number;
+  from: number; total_steps: number; total_tics: number;
+  steps: [number, number, number, number, number][];
+};
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const appEl = $("app");
@@ -55,6 +62,14 @@ let inflight = false;
 let last: FrameResult | null = null;
 let mode: "watch" | "play" = "watch";
 let player: { loop: GameLoop; input: PlayerInput } | null = null;
+
+// Smooth playback state
+let smooth: SmoothPlayer | null = null;
+let smoothState: "off" | "loading" | "on" | "failed" = "off";
+let smoothBaseTic = 0; // engine gametic right after boot, before any of Claude's moves
+let smoothTotalTics = 0; // server-side tics covered by the log we have fetched
+let fetchingLog = false;
+const smoothToggle = $<HTMLInputElement>("smooth-toggle");
 
 // ---------------------------------------------------------------------------
 // Watch mode
@@ -146,11 +161,21 @@ async function poll() {
     $("sync").hidden = false;
   }, SYNC_INDICATOR_MS);
   try {
-    const r = await app.callServerTool({ name: "doom_frame", arguments: { session_id: sessionId, since_version: version } });
+    const smoothOn = smoothState === "on";
+    const r = await app.callServerTool({
+      name: "doom_frame",
+      arguments: { session_id: sessionId, since_version: version, include_frame: !smoothOn },
+    });
     diag.lastPollMs = Math.round(performance.now() - t0);
     const f = r.structuredContent as FrameResult | undefined;
     if (r.isError) diag.pollError = JSON.stringify(r.content).slice(0, 300);
-    else if (f && !f.unchanged && mode === "watch") render(f);
+    else if (f && !f.unchanged && mode === "watch") {
+      if (smoothOn) {
+        // The local engine draws the frame and the HUD in step with the motion.
+        render({ ...f, frame: undefined, hud: undefined });
+        void fetchNewSteps();
+      } else render(f);
+    }
   } catch (e) {
     diag.pollError = String(e);
   } finally {
@@ -160,6 +185,95 @@ async function poll() {
     showDiag();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Smooth playback
+
+const toSteps = (rows: LogResult["steps"]): TicStep[] => rows.map(([f, s, t, b, n]) => ({ f, s, t, b, n }));
+
+function setSmoothBadge(text: string | null) {
+  const b = $("smooth-badge");
+  b.hidden = !text;
+  b.textContent = text ?? "";
+  b.classList.toggle("smooth", smoothState === "on");
+}
+
+function onSmoothState(st: ReturnType<SmoothPlayer["engine"]["getState"]>, behind: number) {
+  if (mode !== "watch") return;
+  renderHud(
+    { health: st.health, armor: st.armor, weapon: st.weapon, ammo: ammoFor(st), kills: `${st.kills}/${st.totalKills}`, status: st.gamestate === "intermission" ? "level_complete" : st.dead ? "dead" : "alive" },
+    st.gametic,
+  );
+  setSmoothBadge(behind > 105 ? "catching up 2×" : "35 fps");
+  // Safety net: once the queue is drained, the local game must be exactly where the server's is.
+  if (behind === 0 && smooth && !fetchingLog && st.gametic !== smoothBaseTic + smoothTotalTics) {
+    diag.desync = { local: st.gametic, expected: smoothBaseTic + smoothTotalTics, at: new Date().toISOString() };
+    diag.resyncs = ((diag.resyncs as number) ?? 0) + 1;
+    showDiag();
+    void initSmooth();
+  }
+}
+
+async function initSmooth() {
+  if (!sessionId || !smoothToggle.checked) return;
+  const sid = sessionId;
+  smooth?.stop();
+  smooth = null;
+  smoothState = "loading";
+  setSmoothBadge("loading engine…");
+  try {
+    const r = await app.callServerTool({ name: "doom_log", arguments: { session_id: sid, from: 0 } });
+    const log = r.structuredContent as LogResult | undefined;
+    if (!log || r.isError) throw new Error("could not fetch the game log");
+    const engine = await loadEngine({ skill: log.skill, episode: log.episode, map: log.map }, undefined, ASSET_BASE);
+    if (sid !== sessionId || !smoothToggle.checked) return; // superseded
+    smoothBaseTic = engine.getState().gametic;
+    smoothTotalTics = log.total_tics;
+    smooth = new SmoothPlayer(engine, canvas, onSmoothState);
+    smooth.replayNow(toSteps(log.steps));
+    smooth.appliedSteps = log.total_steps;
+    smoothState = "on";
+    $("empty").hidden = true;
+    if (mode === "watch") smooth.start();
+    diag.smooth = { steps: log.total_steps, tics: log.total_tics };
+  } catch (e) {
+    smoothState = "failed";
+    setSmoothBadge("still frames");
+    diag.smoothError = String(e);
+    version = -1; // fall back: ask the server for a full frame
+  }
+  showDiag();
+}
+
+async function fetchNewSteps() {
+  if (!smooth || !sessionId || fetchingLog) return;
+  fetchingLog = true;
+  try {
+    const r = await app.callServerTool({ name: "doom_log", arguments: { session_id: sessionId, from: smooth.appliedSteps } });
+    const log = r.structuredContent as LogResult | undefined;
+    if (log && !r.isError && smooth) {
+      smooth.enqueue(toSteps(log.steps));
+      smooth.appliedSteps = log.total_steps;
+      smoothTotalTics = log.total_tics;
+    }
+  } catch (e) {
+    diag.logError = String(e);
+  } finally {
+    fetchingLog = false;
+  }
+}
+
+smoothToggle.onchange = () => {
+  if (smoothToggle.checked) void initSmooth();
+  else {
+    smooth?.stop();
+    smooth = null;
+    smoothState = "off";
+    setSmoothBadge(null);
+    version = -1; // show the server's frame again
+    void poll();
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Play mode
@@ -192,6 +306,7 @@ async function startPlaying() {
     engine.replay(steps);
     diag.localReplay = { tics: steps.reduce((a, s) => a + s.n, 0), ms: Math.round(performance.now() - t0) };
 
+    smooth?.stop();
     mode = "play";
     appEl.dataset.mode = "play";
     $("mode-badge").textContent = "You're playing";
@@ -248,7 +363,10 @@ function stopPlaying() {
   $("watch-btn").hidden = true;
   $("hint").textContent = "";
   if (document.pointerLockElement) document.exitPointerLock();
-  version = -1; // force a full frame
+  if (smooth) {
+    smooth.draw();
+    smooth.start();
+  } else version = -1; // force a full frame
   if (!sessionId) $("empty").hidden = false;
   void poll();
 }
@@ -286,7 +404,7 @@ function wireTouchButtons(input: PlayerInput) {
 // ---------------------------------------------------------------------------
 // Host connection
 
-const app = new App({ name: "DOOM viewer", version: "0.3.0" });
+const app = new App({ name: "DOOM viewer", version: "0.4.0" });
 
 app.ontoolinput = () => {
   $("empty").textContent = "Starting the game…";
@@ -298,6 +416,7 @@ app.ontoolresult = (result) => {
     sessionId = sc.session_id;
     version = -1;
     void poll();
+    void initSmooth();
   }
   showDiag();
 };

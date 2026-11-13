@@ -71,3 +71,7 @@ button:disabled { opacity: .5; cursor: default; }
 .diag summary { color: var(--muted); font-size: 11px; cursor: pointer; }
 .diag pre { white-space: pre-wrap; font-size: 10.5px; color: var(--muted); max-height: 180px; overflow: auto; margin: 6px 0 0; }
 @media (prefers-reduced-motion: reduce) { .dot, .spinner { animation: none; } }
+
+.toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.toggle input { accent-color: var(--accent); }
+.badge.smooth { color: var(--hud); border-color: currentColor; }

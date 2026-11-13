@@ -166,17 +166,17 @@ export async function observeSession(id: string): Promise<Result> {
 }
 
 /** Current frame (1×, PNG) + HUD for the viewer. Uses the warm engine when possible. */
-export async function frame(id: string): Promise<{ session: Session; hud: Observation["hud"]; png: Buffer; tic: number; cacheHit: boolean; replayTics: number }> {
+export async function frame(id: string, withPng = true): Promise<{ session: Session; hud: Observation["hud"]; png: Buffer | null; tic: number; cacheHit: boolean; replayTics: number }> {
   const s = await sessionStore().get(id);
   const { engine, cacheHit, replayTics } = await engineFor(s);
-  const png = encodePng(engine.render(), engine.width, engine.height, 1);
+  const png = withPng ? encodePng(engine.render(), engine.width, engine.height, 1) : null;
   const st = engine.getState();
   checkin(s.id, engine, s.version);
   return { session: s, hud: hudLine(st), png, tic: st.gametic, cacheHit, replayTics };
 }
 
-/** The session's full input log, for local replay in the viewer ("Play yourself", smooth playback). */
-export async function inputLog(id: string) {
+/** The session's input log from step `from` on, for local replay in the viewer ("Play yourself", smooth playback). */
+export async function inputLog(id: string, from = 0) {
   const s = await sessionStore().get(id);
   return {
     session_id: s.id,
@@ -184,8 +184,11 @@ export async function inputLog(id: string) {
     skill: s.skill,
     episode: s.episode,
     map: s.map,
+    from,
+    total_steps: s.steps.length,
+    total_tics: totalTics(s.steps),
     /** [forwardmove, sidemove, angleturn, buttons, tics] per step */
-    steps: s.steps.map((x) => [x.f, x.s, x.t, x.b, x.n] as const),
+    steps: s.steps.slice(from).map((x) => [x.f, x.s, x.t, x.b, x.n] as const),
   };
 }
 
