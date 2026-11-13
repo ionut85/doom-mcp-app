@@ -24,7 +24,9 @@ The inline viewer has a **Tell Claude** box under the caption log, shown only wh
 - sandboxed iframes without `allow-forms` never fire a form's `submit` event, so the box uses plain click and Enter handlers;
 - the box is hidden when the host doesn't advertise `message`.
 
-**Not verified:**
+**Verified in claude.ai on 2026-11-13.** The user ran the checks in this file and `docs/DEMO.md` and reported them all working.
+
+**Before 2026-11-13 these were open:**
 - whether claude.ai grants the microphone to app iframes;
 - whether it shows app-sent messages as user turns that Claude answers.
 

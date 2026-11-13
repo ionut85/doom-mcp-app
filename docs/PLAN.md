@@ -296,7 +296,7 @@ claude-plays-doom/
   - It falls back to server frames if the engine can't load, and there's a toggle in the viewer.
 - **Tell Claude.** A box in the viewer posts typed or dictated (Web Speech API) instructions into the chat with `app.sendMessage`. It's shown only when the host advertises `message`. The resource requests `permissions.microphone`.
   - The typed path is verified in `/dev/host`.
-  - Microphone and claude.ai behaviour still need a manual test; steps are in `docs/voice.md`.
+  - Verified in claude.ai on 2026-11-13: the user ran the checks in `docs/voice.md` and `docs/DEMO.md` (smooth playback, Tell Claude, microphone) and reported them all working.
   - The box doesn't use a `<form>`: sandboxed iframes without `allow-forms` never fire `submit`.
 - **`/replay`.** Re-renders saved runs (`apps/web/public/replays/*.json`: input log plus captions with tics, exported by `scripts/export-replay.ts` and verified to reach the exit) at 0.5–4×, with Claude's captions burned in. **Record video** saves a WebM through `MediaRecorder`, the demo's fallback video.
 - **Docs.** `docs/DEMO.md` is the run-sheet (prompts for three modes, checklist, fallbacks, talking points). `docs/voice.md` covers voice. The README diagram is updated.
