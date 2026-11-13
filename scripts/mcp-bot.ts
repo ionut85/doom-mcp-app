@@ -7,7 +7,7 @@ const url = process.argv[2] ?? "http://localhost:3000/api/mcp";
 const N = Number(process.argv[3] ?? 40);
 const perception = process.argv[4] ?? "state";
 
-type Enemy = { type: string; distance: number; angle: number; in_crosshair: boolean; on_screen: boolean };
+type Enemy = { type: string; distance: number; turn: number; in_crosshair: boolean; on_screen: boolean };
 type State = {
   status: string;
   health: number;
@@ -55,8 +55,8 @@ for (let i = 0; i < N; i++) {
   const target = s.enemies.find((e) => e.on_screen) ?? s.enemies[0];
   if (s.status === "dead" || s.status === "level_complete") {
     r = await call("doom_act", { session_id: sessionId, steps: [{ actions: ["use"], tics: 2 }, { actions: [], tics: 10 }], caption: "Continuing" });
-  } else if (target && !target.in_crosshair && Math.abs(target.angle) > 1) {
-    r = await call("doom_turn", { session_id: sessionId, degrees: target.angle, caption: `Aiming at the ${target.type}` });
+  } else if (target && !target.in_crosshair && Math.abs(target.turn) > 1) {
+    r = await call("doom_turn", { session_id: sessionId, degrees: target.turn, caption: `Aiming at the ${target.type}` });
   } else if (target) {
     r = await call("doom_act", { session_id: sessionId, steps: [{ actions: ["fire"], tics: 10 }], caption: `Shooting the ${target.type}` });
   } else if (stuck >= 2) {

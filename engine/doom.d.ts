@@ -15,6 +15,9 @@ export interface DoomModule {
   _doom_objects_ptr(): number;
   _doom_object_stride(): number;
   _doom_push_key(pressed: number, key: number): void;
+  _doom_get_lines(): number;
+  _doom_lines_ptr(): number;
+  _doom_line_stride(): number;
 }
 export interface DoomModuleOptions {
   print?: (s: string) => void;

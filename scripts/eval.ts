@@ -154,7 +154,7 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
       const target = st.enemies?.find((e: any) => e.on_screen) ?? st.enemies?.[0];
       let name = "doom_act", args: Record<string, unknown>;
       if (st.status === "dead") args = { session_id: sid, steps: [{ actions: ["use"], tics: 2 }, { actions: [], tics: 10 }] };
-      else if (target && !target.in_crosshair && Math.abs(target.angle) > 1) (name = "doom_turn"), (args = { session_id: sid, degrees: target.angle });
+      else if (target && !target.in_crosshair && Math.abs(target.turn) > 1) (name = "doom_turn"), (args = { session_id: sid, degrees: target.turn });
       else if (target) args = { session_id: sid, steps: [{ actions: ["fire"], tics: 10 }] };
       else if (stuck >= 2) (name = "doom_turn"), (args = { session_id: sid, degrees: 60 + ((actions * 37) % 90) }), (stuck = 0);
       else args = { session_id: sid, steps: [{ actions: ["forward", "run"], tics: 14 }, { actions: ["use"], tics: 1 }] };

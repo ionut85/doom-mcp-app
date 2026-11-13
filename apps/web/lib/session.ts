@@ -27,6 +27,8 @@ export interface Session {
   steps: TicStep[];
   /** most recent first, capped */
   captions: Caption[];
+  /** 64x64-unit map cells the player has stood in (for the map's "visited" overlay) */
+  visited?: string[];
   version: number;
   createdAt: number;
   updatedAt: number;

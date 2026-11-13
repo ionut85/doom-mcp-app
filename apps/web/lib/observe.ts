@@ -5,6 +5,7 @@
 import type { Engine, GameObject, PlayerState } from "@doom-player/doom-core/core";
 import { TICRATE } from "@doom-player/doom-core/core";
 import { encodePng } from "./frame";
+import { asciiMap, compassHeading, compassName, MAP_LEGEND, nearbyInteractives, type Interactive } from "./mapview";
 import { friendlyName } from "./names";
 import type { Perception } from "./session";
 
@@ -29,11 +30,11 @@ export interface EnemyView {
   id: number;
   type: string;
   distance: number;
-  /** degrees relative to facing; negative = left, positive = right */
-  angle: number;
+  /** degrees to turn to face it: doom_turn(turn). Negative = left, positive = right. */
+  turn: number;
   /** within the 90° field of view */
   on_screen: boolean;
-  /** crosshair is on it: |angle| is within its angular half-width */
+  /** crosshair is on it: |turn| is within its angular half-width */
   in_crosshair: boolean;
   health: number;
 }
@@ -41,7 +42,8 @@ export interface EnemyView {
 export interface ThingView {
   type: string;
   distance: number;
-  angle: number;
+  /** degrees to turn to face it */
+  turn: number;
 }
 
 export interface StateObservation {
@@ -56,13 +58,19 @@ export interface StateObservation {
   weapons: string[];
   keys: string[];
   position: { x: number; y: number };
-  angle: number;
+  /** compass heading: 0 = north, 90 = east; doom_turn(+d) adds d */
+  heading: number;
+  heading_name: string;
   kills: string;
   items: string;
   secrets: string;
   enemies: EnemyView[];
   nearby_items: ThingView[];
   barrels: ThingView[];
+  /** doors, switches, lifts and exits nearby */
+  interactives: Interactive[];
+  map_legend: string;
+  map: string[];
   events: string[];
   hint?: string;
 }
@@ -135,14 +143,14 @@ function enemyView(o: GameObject): EnemyView {
     id: o.id,
     type: friendlyName(o.type),
     distance: o.distance,
-    angle: o.angle,
+    turn: o.angle,
     on_screen: Math.abs(o.angle) <= HALF_FOV,
     in_crosshair: Math.abs(o.angle) <= halfWidth,
     health: o.health,
   };
 }
 
-const thing = (o: GameObject): ThingView => ({ type: friendlyName(o.type), distance: o.distance, angle: o.angle });
+const thing = (o: GameObject): ThingView => ({ type: friendlyName(o.type), distance: o.distance, turn: o.angle });
 
 export function hudLine(s: PlayerState): HudLine {
   const ammoKey = AMMO_FOR_WEAPON[s.weapon];
@@ -156,7 +164,7 @@ export function hudLine(s: PlayerState): HudLine {
   };
 }
 
-export function observe(engine: Engine, prev: PlayerState | null, perception: Perception): Observation {
+export function observe(engine: Engine, prev: PlayerState | null, perception: Perception, visited: Set<string> = new Set()): Observation {
   const s = engine.getState();
   const objs = engine.getObjects(ENEMY_RANGE);
   const enemies = objs
@@ -172,6 +180,10 @@ export function observe(engine: Engine, prev: PlayerState | null, perception: Pe
     .slice(0, 4)
     .map(thing);
   const hud = hudLine(s);
+  // Map awareness is part of the structured state only; vision-only play never sees it.
+  const lines = perception === "vision" ? [] : engine.getLines();
+  const interactives = perception === "vision" || s.gamestate !== "level" ? [] : nearbyInteractives(lines, s);
+  const map = perception === "vision" || s.gamestate !== "level" ? [] : asciiMap(lines, s, objs, visited);
   const st: StateObservation = {
     tic: s.gametic,
     time_s: Math.round((s.levelTime / TICRATE) * 10) / 10,
@@ -184,19 +196,27 @@ export function observe(engine: Engine, prev: PlayerState | null, perception: Pe
     weapons: s.weaponsOwned,
     keys: s.keys,
     position: { x: Math.round(s.x), y: Math.round(s.y) },
-    angle: Math.round(s.angle),
+    heading: compassHeading(s.angle),
+    heading_name: compassName(compassHeading(s.angle)),
     kills: `${s.kills}/${s.totalKills}`,
     items: `${s.items}/${s.totalItems}`,
     secrets: `${s.secrets}/${s.totalSecrets}`,
     enemies,
     nearby_items: nearbyItems,
     barrels,
+    interactives,
+    map_legend: map.length ? MAP_LEGEND : "",
+    map,
     events: diffEvents(prev, s),
   };
   if (st.status === "dead") st.hint = "You are dead. doom_act with actions ['use'] restarts the level.";
   else if (st.status === "level_complete") st.hint = "Level complete! doom_act with ['use'] a few times to continue to the next map.";
   else if (enemies.some((e) => e.in_crosshair)) st.hint = "An enemy is in your crosshair: fire.";
-  else if (enemies.length) st.hint = `Nearest enemy is ${describeAngle(enemies[0]!.angle)}; doom_turn by its angle to aim.`;
+  else if (enemies.length) st.hint = `Nearest enemy is ${describeAngle(enemies[0]!.turn)}: doom_turn(${enemies[0]!.turn}) to aim, then fire.`;
+  else if (interactives.some((i) => i.in_use_range && i.kind !== "locked_door" && i.state !== "open"))
+    st.hint = "Something usable is right in front of you: doom_act ['use'] for 1-2 tics.";
+  else if (interactives.length)
+    st.hint = `No enemies in sight. Nearest ${interactives[0]!.kind.replace("_", " ")} is ${interactives[0]!.distance} units away: doom_turn(${interactives[0]!.turn}) then move to it. Or head for blank (unvisited) space on the map.`;
 
   const png = perception === "state" ? undefined : encodePng(engine.render(), engine.width, engine.height, 2);
   return { state: st, hud, png };

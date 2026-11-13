@@ -241,3 +241,46 @@ int32_t *doom_objects_ptr(void) { return objs; }
 
 EMSCRIPTEN_KEEPALIVE
 int doom_object_stride(void) { return O_STRIDE; }
+
+// ---------------------------------------------------------------------------
+// map geometry: every linedef with its special and the heights on each side.
+// Static per map except door/lift heights, so callers can read it as needed.
+
+#include "r_defs.h"
+
+enum { L_X1, L_Y1, L_X2, L_Y2, L_FLAGS, L_SPECIAL, L_TAG, L_FFLOOR, L_FCEIL, L_BFLOOR, L_BCEIL, L_STRIDE };
+#define NO_SIDE (-32768)
+static int32_t *line_buf = NULL;
+static int line_cap = 0;
+
+// Fills the line table and returns the number of lines.
+EMSCRIPTEN_KEEPALIVE
+int doom_get_lines(void) {
+  if (numlines > line_cap) {
+    free(line_buf);
+    line_cap = numlines;
+    line_buf = malloc(sizeof(int32_t) * L_STRIDE * line_cap);
+  }
+  for (int i = 0; i < numlines; i++) {
+    line_t *ld = &lines[i];
+    int32_t *o = &line_buf[i * L_STRIDE];
+    o[L_X1] = ld->v1->x >> FRACBITS;
+    o[L_Y1] = ld->v1->y >> FRACBITS;
+    o[L_X2] = ld->v2->x >> FRACBITS;
+    o[L_Y2] = ld->v2->y >> FRACBITS;
+    o[L_FLAGS] = ld->flags;
+    o[L_SPECIAL] = ld->special;
+    o[L_TAG] = ld->tag;
+    o[L_FFLOOR] = ld->frontsector ? ld->frontsector->floorheight >> FRACBITS : NO_SIDE;
+    o[L_FCEIL] = ld->frontsector ? ld->frontsector->ceilingheight >> FRACBITS : NO_SIDE;
+    o[L_BFLOOR] = ld->backsector ? ld->backsector->floorheight >> FRACBITS : NO_SIDE;
+    o[L_BCEIL] = ld->backsector ? ld->backsector->ceilingheight >> FRACBITS : NO_SIDE;
+  }
+  return numlines;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int32_t *doom_lines_ptr(void) { return line_buf; }
+
+EMSCRIPTEN_KEEPALIVE
+int doom_line_stride(void) { return L_STRIDE; }

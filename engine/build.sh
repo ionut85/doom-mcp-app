@@ -25,7 +25,7 @@ OBJS="dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_mai
 FILES=""
 for o in $OBJS; do FILES="$FILES $WORK/$o.c"; done
 
-EXPORTS='["_doom_init","_doom_step","_doom_render","_doom_frame_ptr","_doom_frame_width","_doom_frame_height","_doom_get_state","_doom_state_len","_doom_get_objects","_doom_objects_ptr","_doom_object_stride","_doom_push_key","_malloc","_free"]'
+EXPORTS='["_doom_init","_doom_step","_doom_render","_doom_frame_ptr","_doom_frame_width","_doom_frame_height","_doom_get_state","_doom_state_len","_doom_get_objects","_doom_objects_ptr","_doom_object_stride","_doom_push_key","_doom_get_lines","_doom_lines_ptr","_doom_line_stride","_malloc","_free"]'
 
 # shellcheck disable=SC2086
 emcc $FILES -o "$DIST/doom.mjs" \

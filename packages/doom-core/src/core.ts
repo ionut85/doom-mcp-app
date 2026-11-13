@@ -102,6 +102,22 @@ export interface PlayerState {
 
 export type ObjectKind = "enemy" | "item" | "shootable";
 
+/** A linedef: map geometry plus its special (doors, switches, exits...). Units are map units. */
+export interface MapLine {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  flags: number;
+  special: number;
+  tag: number;
+  frontFloor: number;
+  frontCeil: number;
+  /** null when the line is one-sided */
+  backFloor: number | null;
+  backCeil: number | null;
+}
+
 export interface GameObject {
   id: number;
   type: string;
@@ -347,6 +363,26 @@ export class Engine {
       });
     }
     return out.sort((a, b) => a.distance - b.distance || a.id - b.id);
+  }
+
+  /** All linedefs of the current map, with current sector heights (doors and lifts move). */
+  getLines(): MapLine[] {
+    const n = this.m._doom_get_lines();
+    const stride = this.m._doom_line_stride();
+    const p = this.m._doom_lines_ptr() >> 2;
+    const raw = this.m.HEAP32.subarray(p, p + n * stride);
+    const out: MapLine[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const o = i * stride;
+      const bf = raw[o + 9]!, bc = raw[o + 10]!;
+      out[i] = {
+        x1: raw[o]!, y1: raw[o + 1]!, x2: raw[o + 2]!, y2: raw[o + 3]!,
+        flags: raw[o + 4]!, special: raw[o + 5]!, tag: raw[o + 6]!,
+        frontFloor: raw[o + 7]!, frontCeil: raw[o + 8]!,
+        backFloor: bf === -32768 ? null : bf, backCeil: bc === -32768 ? null : bc,
+      };
+    }
+    return out;
   }
 
   /** SHA-256 of the raw state vector (positions at full fixed-point precision). */

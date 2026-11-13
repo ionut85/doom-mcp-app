@@ -14,14 +14,22 @@ const VIEWER_URI = "ui://doom/viewer";
 
 const INSTRUCTIONS = `You are playing DOOM (Freedoom Phase 1, E1M1 by default). The game is frozen between your tool calls: time only passes when you act, so think as long as you like.
 
-How to play well:
-- Start with doom_new_game, keep the session_id, and pass a short "caption" on every doom_act / doom_turn describing your intent (the audience sees it).
-- Angles are degrees relative to where you face: negative = left, positive = right. To aim at an enemy, call doom_turn with its angle, then fire. "in_crosshair": true means a shot will hit.
-- Hitscan weapons (pistol, shotgun, chaingun) only auto-aim vertically, so turn precisely first. Fire in bursts of 7-14 tics and re-observe.
-- Move in short steps (7-21 tics) when enemies are near; longer steps (35+) only in cleared areas. "moved N units" in events tells you if you are stuck against a wall: back off and turn.
-- Doors and switches: face them up close and press "use" (1-2 tics). Exits are usually a switch in a small room.
-- Health below 30: retreat, strafe out of sight, and look for stimpacks/medikits (nearby_items).
-- Shoot explosive barrels near groups of enemies, but not when you are within ~150 units of them.
+Goal: kill what threatens you, and find the level's exit (an exit switch, X on the map). Keep the session_id and pass a short "caption" on every doom_act / doom_turn (the audience sees it).
+
+Directions:
+- "turn" values (on enemies, items, interactives) are exactly the argument for doom_turn: negative = left, positive = right.
+- "heading" is a compass bearing: 0 = north, 90 = east, 180 = south, 270 = west. doom_turn(+30) adds 30 to it. The map is drawn north-up.
+
+Fighting:
+- To shoot an enemy: doom_turn(enemy.turn), then doom_act fire for 7-14 tics. "in_crosshair": true means a shot will hit. Hitscan weapons only auto-aim vertically, so turn precisely first.
+- Health below 30: back off out of sight and pick up stimpacks / medikits.
+- Shoot explosive barrels near groups of enemies, but not when you are within ~150 units of one.
+
+Moving and exploring (state/both perception includes a map and an "interactives" list):
+- Plan routes on the map instead of turning around to look: walls are #, closed doors D, switches S, lifts =, the exit X, and "." marks cells you have already visited. Unvisited space next to a doorway or an open edge is where to explore next.
+- Doors open with "use": get within 64 units, face the door (|turn| small) and doom_act ["use"] for 1-2 tics; the door stays open for a few seconds, so walk through right away. "in_use_range": true means use will work now. Locked doors (L) need the key of that color first.
+- Walls that are not doors never open. If "moved 0 units" appears, you are against a wall: turn toward an opening on the map.
+- Use longer moves (21-35 tics with run) through cleared areas, shorter ones (7-14 tics) near enemies.
 - When dead, doom_act ["use"] restarts the level.`;
 
 const caption = z.string().max(LIMITS.maxCaptionLength).optional().describe("One short sentence about what you are doing and why, shown to the audience, e.g. 'Turning to face the imp on the left'.");
@@ -104,7 +112,7 @@ const handler = createMcpHandler(
       {
         title: "DOOM: turn",
         description:
-          "Turn by an exact number of degrees: negative = left, positive = right (same convention as enemy angles in observations). Takes a few tics (max ~11°/tic). Use it to aim: doom_turn(enemy.angle), then doom_act fire.",
+          "Turn by an exact number of degrees: negative = left, positive = right. Every \"turn\" value in observations is the exact argument to face that thing: doom_turn(enemy.turn), then doom_act fire. Adds the degrees to your compass heading. Takes a few tics (max ~11°/tic).",
         inputSchema: z.object({ session_id: sessionId, degrees: z.number().min(-180).max(180), caption }),
       },
       async ({ session_id, degrees, caption }) => toolResult(await turn(session_id, degrees, caption)),

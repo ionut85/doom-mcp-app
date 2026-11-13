@@ -13,6 +13,7 @@ import {
 } from "@doom-player/doom-core/core";
 import { bootEngine } from "./engine-host";
 import { encodePng } from "./frame";
+import { cellKey } from "./mapview";
 import { hudLine, observe, type Observation } from "./observe";
 import {
   addCaption,
@@ -21,6 +22,10 @@ import {
   type Perception,
   type Session,
 } from "./session";
+
+/** Record the player's map cell every this many tics. Splitting a step doesn't change the game. */
+const VISIT_EVERY = 4;
+const MAX_VISITED = 4000;
 
 export const LIMITS = {
   maxStepsPerCall: 8,
@@ -94,9 +99,11 @@ export function logResponse(r: Result, bytes: number) {
 export async function newGame(opts: { skill: number; episode: number; map: number; perception: Perception }): Promise<Result> {
   const t0 = performance.now();
   const now = Date.now();
-  const session: Session = { id: newSessionId(), ...opts, steps: [], captions: [], version: 0, createdAt: now, updatedAt: now };
+  const session: Session = { id: newSessionId(), ...opts, steps: [], captions: [], visited: [], version: 0, createdAt: now, updatedAt: now };
   const engine = await bootEngine({ skill: opts.skill, episode: opts.episode, map: opts.map });
-  const obs = observe(engine, null, opts.perception);
+  const st0 = engine.getState();
+  session.visited = [cellKey(st0.x, st0.y)];
+  const obs = observe(engine, null, opts.perception, new Set(session.visited));
   await sessionStore().create(session);
   checkin(session.id, engine, session.version);
   return { session, obs, stats: { tool: "doom_new_game", cacheHit: false, replayTics: 0, replayMs: performance.now() - t0, totalMs: performance.now() - t0 } };
@@ -112,11 +119,19 @@ async function advance(tool: string, id: string, newSteps: TicStep[], caption: s
   }
   const { engine, cacheHit, replayTics, replayMs } = await engineFor(s);
   const prev: PlayerState = engine.getState();
-  for (const st of newSteps) engine.applyTicStep(st);
-  const obs = observe(engine, prev, s.perception);
+  // Apply in chunks of a few tics so the map's "visited" overlay follows the path.
+  const visited = new Set(s.visited ?? []);
+  for (const st of newSteps) {
+    for (let left = st.n; left > 0; left -= VISIT_EVERY) {
+      engine.applyTicStep({ ...st, n: Math.min(VISIT_EVERY, left) });
+      const p = engine.getState();
+      if (p.gamestate === "level" && !p.dead) visited.add(cellKey(p.x, p.y));
+    }
+  }
+  const obs = observe(engine, prev, s.perception, visited);
 
   const expected = s.version;
-  const next: Session = { ...s, steps: [...s.steps, ...newSteps], version: expected + 1, updatedAt: Date.now() };
+  const next: Session = { ...s, steps: [...s.steps, ...newSteps], visited: [...visited].slice(-MAX_VISITED), version: expected + 1, updatedAt: Date.now() };
   if (caption || newSteps.length) {
     addCaption(next, { tic: obs.state.tic, text: (caption ?? "").slice(0, LIMITS.maxCaptionLength), action: label });
   }
@@ -145,7 +160,7 @@ export async function observeSession(id: string): Promise<Result> {
   const t0 = performance.now();
   const s = await sessionStore().get(id);
   const { engine, cacheHit, replayTics, replayMs } = await engineFor(s);
-  const obs = observe(engine, null, s.perception);
+  const obs = observe(engine, null, s.perception, new Set(s.visited ?? []));
   checkin(s.id, engine, s.version);
   return { session: s, obs, stats: { tool: "doom_observe", cacheHit, replayTics, replayMs, totalMs: performance.now() - t0 } };
 }
