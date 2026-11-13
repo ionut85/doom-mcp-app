@@ -15,9 +15,12 @@
     "bench": "vitest run packages/doom-core/test/replay.bench.test.ts --silent=false",
     "typecheck": "tsc -p packages/doom-core --noEmit && tsc -p scripts --noEmit",
     "dev": "pnpm --dir apps/web dev",
-    "bot": "tsx scripts/mcp-bot.ts"
+    "bot": "tsx scripts/mcp-bot.ts",
+    "eval": "tsx scripts/eval.ts",
+    "eval:report": "tsx scripts/eval-report.ts"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@types/node": "^26.6.6",
     "@types/pngjs": "^6.0.5",
     "pngjs": "^7.0.0",

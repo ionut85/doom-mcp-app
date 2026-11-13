@@ -173,3 +173,34 @@ export async function inputLog(id: string) {
     steps: s.steps.map((x) => [x.f, x.s, x.t, x.b, x.n] as const),
   };
 }
+
+/** Full player state regardless of perception mode: for eval scoring, not for the model. */
+export async function stats(id: string) {
+  const s = await sessionStore().get(id);
+  const { engine } = await engineFor(s);
+  const st = engine.getState();
+  checkin(s.id, engine, s.version);
+  return {
+    session_id: s.id,
+    version: s.version,
+    tics_played: totalTics(s.steps),
+    gametic: st.gametic,
+    gamestate: st.gamestate,
+    episode: st.episode,
+    map: st.map,
+    dead: st.dead,
+    health: st.health,
+    armor: st.armor,
+    kills: st.kills,
+    total_kills: st.totalKills,
+    items: st.items,
+    total_items: st.totalItems,
+    secrets: st.secrets,
+    total_secrets: st.totalSecrets,
+    x: st.x,
+    y: st.y,
+    angle: st.angle,
+    weapon: st.weapon,
+    ammo: st.ammo,
+  };
+}

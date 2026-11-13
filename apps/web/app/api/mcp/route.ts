@@ -3,7 +3,7 @@ import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@model
 import { z } from "zod";
 import { ACTIONS, MAX_TICS_PER_STEP } from "@doom-player/doom-core/core";
 import { loadViewerHtml, publicOrigin } from "@/lib/assets";
-import { act, frame, inputLog, LIMITS, logResponse, newGame, observeSession, turn, type Result } from "@/lib/game";
+import { act, frame, inputLog, LIMITS, logResponse, newGame, observeSession, stats, turn, type Result } from "@/lib/game";
 import { observationText } from "@/lib/observe";
 import { rateLimit } from "@/lib/ratelimit";
 import { PERCEPTIONS, sessionStore } from "@/lib/session";
@@ -167,6 +167,21 @@ const handler = createMcpHandler(
       async ({ session_id }) => {
         const log = await inputLog(session_id);
         return { content: [{ type: "text", text: `${log.steps.length} steps` }], structuredContent: log };
+      },
+    );
+
+    registerAppTool(
+      server,
+      "doom_stats",
+      {
+        title: "DOOM: stats",
+        description: "App-only: full player state (position, kills, health, map) regardless of perception mode. Used by the eval harness for scoring; never shown to the model.",
+        inputSchema: z.object({ session_id: sessionId }),
+        _meta: { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } },
+      },
+      async ({ session_id }) => {
+        const st = await stats(session_id);
+        return { content: [{ type: "text", text: JSON.stringify(st) }], structuredContent: st };
       },
     );
   },
