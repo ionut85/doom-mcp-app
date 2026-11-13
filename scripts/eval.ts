@@ -30,6 +30,7 @@ const { values: opt } = parseArgs({
     concurrency: { type: "string", default: "3" },
     endpoint: { type: "string", default: "https://doom-player.vercel.app/api/mcp" },
     label: { type: "string", default: "" },
+    "max-cost": { type: "string", default: "8" }, // $ per run; the run stops cleanly when exceeded
     "dry-run": { type: "boolean", default: false },
   },
 });
@@ -196,7 +197,7 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
   ];
   transcript.push({ role: "user", text: firstText.slice(0, 2000), image: started.content.some((c) => c.type === "image") });
 
-  while (actions < MAX_ACTIONS && !finish(scorer)) {
+  while (actions < MAX_ACTIONS && !finish(scorer) && stop !== "cost_cap") {
     let resp: Anthropic.Beta.BetaMessage;
     try {
       resp = await client.beta.messages.create({
@@ -224,6 +225,9 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
     usage.cacheRead += resp.usage.cache_read_input_tokens ?? 0;
     usage.cacheWrite += resp.usage.cache_creation_input_tokens ?? 0;
     if ((resp.usage.iterations ?? []).some((it) => it.type === "fallback_message")) fallbackRequests++;
+    const pr = PRICES[spec.model] ?? [0, 0, 0, 0];
+    const spent = (usage.input * pr[0] + usage.output * pr[1] + usage.cacheRead * pr[2] + usage.cacheWrite * pr[3]) / 1e6;
+    if (spent > Number(opt["max-cost"])) stop = "cost_cap";
 
     // Append the assistant turn unchanged (preserved thinking requires an append-only history).
     messages.push({ role: "assistant", content: resp.content });

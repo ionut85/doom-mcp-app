@@ -288,7 +288,7 @@ claude-plays-doom/
   - nearby `interactives` (doors with open/closed state and key color, switches, lifts, exits, `in_use_range`);
   - a 21×21 north-up ASCII map with the cells visited this session.
 - **Headline numbers** (Opus 5.5, medium effort, 50 actions, skill 3): 5.4–6.0 kills with structured state vs 3.2 vision-only vs 2 for a scripted bot. No run reached the exit: 50 actions is only ~22 s of game time. Cost per run: $0.51 (vision) to $0.80 (both).
-- **Open question.** Can Claude finish E1M1 with a much longer budget? That needs runs of a few hundred actions; the cost grows faster than linearly with the budget.
+- **Claude finishes E1M1.** With a 200-action budget (`both` perception, one run each), Claude reached the exit at skill 2 in 74 actions ($1.35) and at skill 3 in 140 actions ($3.43), without dying.
 
 ### References
 - MCP Apps in Claude: https://claude.com/resources/articles/interactive-connectors-full-tool
