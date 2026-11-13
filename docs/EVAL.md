@@ -77,7 +77,7 @@ Two single runs with a 200-action budget, Opus 5.5 at medium effort, `both` perc
 
 | Skill | Actions to exit | Game time | Kills | Damage taken | Area explored | Cost |
 |---|---|---|---|---|---|---|
-| 2 (Hey, not too rough) | 74 | ~25 s | 5 of 17 | 0 | 41 cells | $1.35 |
+| 2 (Hey, not too rough) | 74 | 22 s | 5 of 17 | 0 | 41 cells | $1.35 |
 | 3 (Hurt me plenty, the demo default) | 140 | 47 s | 10 of 29 | 89 (finished at 39 health) | 55 cells | $3.43 |
 
 - **The skill-3 game.** Claude got through the fight behind the first door, picked up a shotgun, crossed the level, and cleared a shotgun guy in the exit room. It then picked up the dropped shells, faced the exit switch and pressed it ("Pressing the exit switch!").
