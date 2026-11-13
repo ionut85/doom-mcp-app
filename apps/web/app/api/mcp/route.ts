@@ -216,7 +216,9 @@ async function guarded(req: Request): Promise<Response> {
   const body = await req.text();
   const info = describeRpc(body);
   const meta = { ...info, pv: req.headers.get("mcp-protocol-version"), ua: req.headers.get("user-agent")?.slice(0, 40) };
-  console.log(JSON.stringify({ evt: "mcp_start", ...meta }));
+  // The viewer polls doom_frame a few times a second: log those only when slow.
+  const quiet = /doom_frame|^ping/.test(info.rpc);
+  if (!quiet) console.log(JSON.stringify({ evt: "mcp_start", ...meta }));
   const res = await handler(new Request(req.url, { method: "POST", headers: req.headers, body }));
   if (!res.body) return res;
   let bytes = 0;
@@ -227,6 +229,7 @@ async function guarded(req: Request): Promise<Response> {
         c.enqueue(chunk);
       },
       flush() {
+        if (quiet && performance.now() - t0 < 2000) return;
         console.log(JSON.stringify({ evt: "mcp_end", ...meta, status: res.status, bytes, ms: Math.round(performance.now() - t0) }));
       },
     }),
