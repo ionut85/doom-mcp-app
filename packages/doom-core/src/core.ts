@@ -116,6 +116,13 @@ export interface MapLine {
   /** null when the line is one-sided */
   backFloor: number | null;
   backCeil: number | null;
+  /** Sector index on each side (-1 = none), the sector's tag, and its special (5, 7, 16 = damaging floor...). */
+  frontSector: number;
+  backSector: number;
+  frontSectorTag: number;
+  backSectorTag: number;
+  frontSectorSpecial: number;
+  backSectorSpecial: number;
 }
 
 export interface GameObject {
@@ -380,6 +387,9 @@ export class Engine {
         flags: raw[o + 4]!, special: raw[o + 5]!, tag: raw[o + 6]!,
         frontFloor: raw[o + 7]!, frontCeil: raw[o + 8]!,
         backFloor: bf === -32768 ? null : bf, backCeil: bc === -32768 ? null : bc,
+        frontSector: raw[o + 11]!, backSector: raw[o + 12]!,
+        frontSectorTag: raw[o + 13]!, backSectorTag: raw[o + 14]!,
+        frontSectorSpecial: raw[o + 15]!, backSectorSpecial: raw[o + 16]!,
       };
     }
     return out;

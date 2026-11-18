@@ -20,6 +20,16 @@ describe("assisted moves", () => {
     expect(strip(cold.obs.state)).toEqual(strip(warm.obs.state));
   });
 
+  it("doom_goto rides E1M1's lift down, then explores the corridor below", async () => {
+    const g = await newGame({ skill: 3, episode: 1, map: 1, perception: "state" });
+    const id = g.session.id;
+    const lift = g.obs.state.interactives.find((i) => i.kind === "lift" && i.how === "walk onto")!;
+    let r = await autoGoto(id, { interactive_id: lift.id }, { maxSeconds: 6 });
+    expect(r.obs.state.result).toMatch(/rode the lift down 124 units/);
+    r = await autoGoto(id, { explore: true }, { maxSeconds: 6 });
+    expect(r.obs.state.position.x).toBeGreaterThan(300); // east along the lower corridor
+  });
+
   it("doom_goto explore moves somewhere new", async () => {
     const g = await newGame({ skill: 3, episode: 1, map: 1, perception: "state" });
     const r = await autoGoto(g.session.id, { explore: true }, { maxSeconds: 4 });
@@ -44,7 +54,7 @@ describe("assisted moves", () => {
     for (let i = 0; i < 40; i++) {
       const st = r.obs.state;
       if (st.status !== "alive") break;
-      if (st.enemies.some((e) => e.distance <= 900)) r = await autoAttack(id, {});
+      if (st.enemies.some((e) => e.distance <= 650)) r = await autoAttack(id, {});
       else {
         const t = st.interactives.find((x) => !failed.has(x.id) && ((x.kind === "door" && x.state === "closed") || x.kind === "exit_switch"));
         r = t ? await autoGoto(id, { interactive_id: t.id }, { maxSeconds: 6 }) : await autoGoto(id, { explore: true }, { maxSeconds: 6 });

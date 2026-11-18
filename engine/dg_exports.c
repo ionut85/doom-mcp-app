@@ -248,7 +248,12 @@ int doom_object_stride(void) { return O_STRIDE; }
 
 #include "r_defs.h"
 
-enum { L_X1, L_Y1, L_X2, L_Y2, L_FLAGS, L_SPECIAL, L_TAG, L_FFLOOR, L_FCEIL, L_BFLOOR, L_BCEIL, L_STRIDE };
+// Append-only: mirrored in packages/doom-core/src/core.ts (getLines).
+enum {
+  L_X1, L_Y1, L_X2, L_Y2, L_FLAGS, L_SPECIAL, L_TAG, L_FFLOOR, L_FCEIL, L_BFLOOR, L_BCEIL,
+  L_FSECTOR, L_BSECTOR, L_FSECTAG, L_BSECTAG, L_FSECSPECIAL, L_BSECSPECIAL,
+  L_STRIDE
+};
 #define NO_SIDE (-32768)
 static int32_t *line_buf = NULL;
 static int line_cap = 0;
@@ -275,6 +280,12 @@ int doom_get_lines(void) {
     o[L_FCEIL] = ld->frontsector ? ld->frontsector->ceilingheight >> FRACBITS : NO_SIDE;
     o[L_BFLOOR] = ld->backsector ? ld->backsector->floorheight >> FRACBITS : NO_SIDE;
     o[L_BCEIL] = ld->backsector ? ld->backsector->ceilingheight >> FRACBITS : NO_SIDE;
+    o[L_FSECTOR] = ld->frontsector ? (int32_t)(ld->frontsector - sectors) : -1;
+    o[L_BSECTOR] = ld->backsector ? (int32_t)(ld->backsector - sectors) : -1;
+    o[L_FSECTAG] = ld->frontsector ? ld->frontsector->tag : 0;
+    o[L_BSECTAG] = ld->backsector ? ld->backsector->tag : 0;
+    o[L_FSECSPECIAL] = ld->frontsector ? ld->frontsector->special : 0;
+    o[L_BSECSPECIAL] = ld->backsector ? ld->backsector->special : 0;
   }
   return numlines;
 }

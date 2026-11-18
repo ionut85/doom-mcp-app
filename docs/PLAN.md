@@ -304,7 +304,13 @@ claude-plays-doom/
   - `doom_attack` aims at and fires on enemies in range one at a time (exact angles, fire only when in the crosshair), and walks in with melee weapons.
   - Both run tic by tic on the server and log ordinary TicSteps (turns rounded so runs merge), so replay, smooth playback and Play yourself are unchanged. They stop early with a `result` line saying why.
   - In a scripted loop on E1M1 they averaged ~2.2 s of game time per call (5×).
-  - Limits: routes can't pass closed doors or ride lifts; solid decorations aren't in the grid (handled by sidestepping when stuck).
+  - Ledges and lifts (added the same day, after the eval below showed Claude losing actions there):
+    - The planner treats a floor step over 24 units as one-way: you can drop down it, not climb it.
+    - `doom_goto` to a lift rides it. A walk-on lift: step onto the platform, wait until it stops. A use lift: press use, wait for the platform, step on, ride.
+    - The engine's line export gained each side's sector index, sector tag and sector special (append-only). The lift platform is the side whose sector tag matches the trigger line's tag.
+    - Floor damage (nukage, no attacker) no longer interrupts a walk.
+    - In the scripted loop this made ~2.7 s of game time per call.
+  - Limits: routes can't pass closed doors; solid decorations aren't in the grid (handled by sidestepping when stuck).
   - `pnpm eval --no-assist` hides them, so results stay comparable with the earlier evals.
 - **Docs.** `docs/DEMO.md` is the run-sheet (prompts for three modes, checklist, fallbacks, talking points). `docs/voice.md` covers voice. The README diagram is updated.
 

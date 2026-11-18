@@ -17,6 +17,36 @@ export interface NavGrid {
   h: number;
   /** 1 = blocked */
   blocked: Uint8Array;
+  /** Ledges: steps too high to climb but fine to drop down. Crossing is checked per direction. */
+  ledges: MapLine[];
+  /** cell index -> indices into `ledges` near that cell */
+  ledgeAt: Map<number, number[]>;
+}
+
+const PLAYER_HEIGHT = 56;
+const MAX_STEP = 24;
+
+/** Two-sided, passable headroom, but a floor step over 24 units: you can drop down it, not climb it. */
+export function isLedge(l: MapLine): boolean {
+  if (l.backFloor === null || l.backCeil === null || l.flags & 1) return false;
+  const opening = Math.min(l.frontCeil, l.backCeil) - Math.max(l.frontFloor, l.backFloor);
+  return opening >= PLAYER_HEIGHT && Math.abs(l.frontFloor - l.backFloor) > MAX_STEP;
+}
+
+/** Signed side of point p relative to line l: < 0 = front (right of x1,y1 -> x2,y2), > 0 = back. */
+const side = (l: MapLine, x: number, y: number) => (l.x2 - l.x1) * (y - l.y1) - (l.y2 - l.y1) * (x - l.x1);
+
+/** Moving a -> b crosses ledge l upward (low floor to high floor), which the player can't do. */
+function climbsLedge(l: MapLine, a: Point, b: Point): boolean {
+  const sa = side(l, a.x, a.y), sb = side(l, b.x, b.y);
+  if (sa === 0 || sb === 0 || sa < 0 === sb < 0) return false;
+  // Does segment a-b actually cross the line segment (not just its extension)?
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const s1 = dx * (l.y1 - a.y) - dy * (l.x1 - a.x), s2 = dx * (l.y2 - a.y) - dy * (l.x2 - a.x);
+  if (s1 < 0 === s2 < 0 && s1 !== 0 && s2 !== 0) return false;
+  const fromFloor = sa < 0 ? l.frontFloor : l.backFloor!;
+  const toFloor = sa < 0 ? l.backFloor! : l.frontFloor;
+  return toFloor > fromFloor;
 }
 
 export type Point = { x: number; y: number };
@@ -41,7 +71,28 @@ export function buildGrid(lines: MapLine[]): NavGrid {
   const w = Math.ceil((maxX + MARGIN - x0) / NAV_CELL);
   const h = Math.ceil((maxY + MARGIN - y0) / NAV_CELL);
   const blocked = new Uint8Array(w * h);
+  const ledges: MapLine[] = [];
+  const ledgeAt = new Map<number, number[]>();
   for (const l of lines) {
+    if (isLedge(l)) {
+      // Not inflated: dropping off lands right next to it. Remember which cells it passes near.
+      const k = ledges.push(l) - 1;
+      const n = Math.max(1, Math.ceil(Math.hypot(l.x2 - l.x1, l.y2 - l.y1) / 8));
+      for (let i = 0; i <= n; i++) {
+        const cx = Math.floor((l.x1 + ((l.x2 - l.x1) * i) / n - x0) / NAV_CELL);
+        const cy = Math.floor((l.y1 + ((l.y2 - l.y1) * i) / n - y0) / NAV_CELL);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const list = ledgeAt.get(ny * w + nx);
+            if (!list) ledgeAt.set(ny * w + nx, [k]);
+            else if (list[list.length - 1] !== k) list.push(k);
+          }
+        }
+      }
+      continue;
+    }
     if (!blocks(l)) continue;
     const cx0 = Math.max(0, Math.floor((Math.min(l.x1, l.x2) - CLEARANCE - x0) / NAV_CELL));
     const cx1 = Math.min(w - 1, Math.floor((Math.max(l.x1, l.x2) + CLEARANCE - x0) / NAV_CELL));
@@ -55,7 +106,24 @@ export function buildGrid(lines: MapLine[]): NavGrid {
       }
     }
   }
-  return { x0, y0, w, h, blocked };
+  return { x0, y0, w, h, blocked, ledges, ledgeAt };
+}
+
+/** Whether going straight from a to b would have to climb a ledge. */
+function climbsAny(g: NavGrid, a: Point, b: Point): boolean {
+  if (!g.ledgeAt.size) return false;
+  const d = Math.hypot(b.x - a.x, b.y - a.y);
+  const n = Math.max(1, Math.ceil(d / NAV_CELL));
+  const seen = new Set<number>();
+  for (let i = 0; i <= n; i++) {
+    const [cx, cy] = cellOf(g, a.x + ((b.x - a.x) * i) / n, a.y + ((b.y - a.y) * i) / n);
+    for (const k of g.ledgeAt.get(cy * g.w + cx) ?? []) {
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (climbsLedge(g.ledges[k]!, a, b)) return true;
+    }
+  }
+  return false;
 }
 
 const cellOf = (g: NavGrid, x: number, y: number): [number, number] => [Math.floor((x - g.x0) / NAV_CELL), Math.floor((y - g.y0) / NAV_CELL)];
@@ -89,7 +157,7 @@ export function clearLine(g: NavGrid, a: Point, b: Point): boolean {
   for (let i = 0; i <= n; i++) {
     if (isBlocked(g, a.x + ((b.x - a.x) * i) / n, a.y + ((b.y - a.y) * i) / n)) return false;
   }
-  return true;
+  return !climbsAny(g, a, b);
 }
 
 /** Binary min-heap of cell indices keyed by f-score. */
@@ -190,6 +258,9 @@ export function findPath(g: NavGrid, start: Point, goal: Goal, maxNodes = 120_00
       const j = ny * g.w + nx;
       if (g.blocked[j] || closed[j]) continue;
       if (dx && dy && (g.blocked[cy * g.w + nx] || g.blocked[ny * g.w + cx])) continue; // no corner cutting
+      if (g.ledgeAt.has(i) || g.ledgeAt.has(j)) {
+        if (climbsAny(g, centre(g, i), centre(g, j))) continue; // can drop off a ledge, not climb it
+      }
       const nc = cost[i]! + c;
       if (nc < cost[j]!) {
         cost[j] = nc;

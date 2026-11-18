@@ -147,11 +147,11 @@ const handler = createMcpHandler(
       {
         title: "DOOM: go to (assisted)",
         description: `Assisted movement: plans a route around walls and walks it at running speed, for up to max_seconds (default 4, max ${LIMITS.maxAutoTics / 35}). Give exactly one target:
-- interactive_id: a door, switch, lift or exit from state.interactives. At a door or switch it faces it and presses use (and waits for a door to open), unless use=false.
+- interactive_id: a door, switch, lift or exit from state.interactives. At a door or switch it faces it and presses use (and waits for a door to open), unless use=false. At a lift it rides it (calls it if needed, steps on, waits until it stops).
 - item_id: an item from state.nearby_items, to pick it up.
 - x and y: a map position (state.position is yours; the map is 64 units per character, north up, so 3 characters right and 2 up of @ is x+192, y+128).
 - explore: true, to head for the nearest area you haven't visited.
-It stops early when a new enemy comes into sight (unless stop_on_enemy=false), when you take damage, or when the way is blocked. Routes can't pass closed doors or ride lifts: open the door or step onto the lift first. Returns the observation plus a "result" line saying what happened and why it stopped.`,
+Routes drop down ledges but never climb a step over 24 units, and can't pass closed doors: open the door first, or doom_goto a lift to change level. It stops early when a new enemy comes into sight (unless stop_on_enemy=false), when you're attacked, or when the way is blocked. Returns the observation plus a "result" line saying what happened and why it stopped.`,
         inputSchema: z.object({
           session_id: sessionId,
           interactive_id: z.number().int().optional(),

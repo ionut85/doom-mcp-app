@@ -4,8 +4,8 @@
 // Everything here is a pure function of the game state: deterministic.
 
 import type { Engine, GameObject, MapLine, PlayerState, TicStep } from "@doom-player/doom-core/core";
-import { cellKey, classify, closestPoint, doorState } from "./mapview";
-import { buildGrid, findPath, type Goal, type Point } from "./nav";
+import { cellKey, classify, closestPoint, doorState, nearbyInteractives } from "./mapview";
+import { buildGrid, findPath, type Goal, type NavGrid, type Point } from "./nav";
 import { friendlyName } from "./names";
 
 /** Receives each tic's command. `left` is how many tics the call may still use. */
@@ -166,27 +166,42 @@ export interface GotoOptions {
 interface Plan {
   goal: Goal;
   label: string;
+  /** "walk": a lift that starts when you step on it: wait on it until it stops. */
+  lift?: "walk";
   /** Line to face and press use on at the end. */
   useLine?: { line: MapLine; index: number };
 }
 
-function planTarget(engine: Engine, lines: MapLine[], p: PlayerState, target: GotoTarget): Plan | string {
+function planTarget(engine: Engine, lines: MapLine[], grid: NavGrid, p: PlayerState, target: GotoTarget): Plan | string {
   switch (target.kind) {
     case "interactive": {
       const l = lines[target.id];
       const c = l && classify(l);
       if (!l || !c) return `no door, switch or exit with id ${target.id} (use an id from state.interactives)`;
-      const [cx, cy] = closestPoint(l, p.x, p.y);
-      // Unit normal of the line, pointing to the player's side.
+      // Aim at the closest point, but keep away from the line's ends (corners and door frames).
       const len = Math.hypot(l.x2 - l.x1, l.y2 - l.y1) || 1;
-      let nx = -(l.y2 - l.y1) / len, ny = (l.x2 - l.x1) / len;
-      if ((p.x - cx) * nx + (p.y - cy) * ny < 0) (nx = -nx), (ny = -ny);
+      const along = ((p.x - l.x1) * (l.x2 - l.x1) + (p.y - l.y1) * (l.y2 - l.y1)) / (len * len);
+      const t = Math.max(0.2, Math.min(0.8, along));
+      const cx = l.x1 + t * (l.x2 - l.x1), cy = l.y1 + t * (l.y2 - l.y1);
+      const nx = -(l.y2 - l.y1) / len, ny = (l.x2 - l.x1) / len;
       const what = c.kind.replace("_", " ");
+      // Which side do we reach first? Plan to a point on each side and compare.
+      const d = c.how === "use" ? 36 : 40;
+      const sides = [1, -1].map((k) => {
+        const point = { x: cx + nx * d * k, y: cy + ny * d * k };
+        const r = findPath(grid, { x: p.x, y: p.y }, { point, tolerance: 20 });
+        return { point, length: r && !r.partial ? r.length : Infinity };
+      });
+      let [near, far] = sides[0]!.length <= sides[1]!.length ? [sides[0]!, sides[1]!] : [sides[1]!, sides[0]!];
+      // A lift's trigger line is tagged with the lift's sector: the platform is the side with that tag.
+      // (The normal points to the back side.)
+      const liftSide = c.kind === "lift" && l.tag ? (l.backSectorTag === l.tag ? 0 : l.frontSectorTag === l.tag ? 1 : -1) : -1;
+      if (liftSide >= 0 && c.how !== "use") [near, far] = liftSide === 0 ? [sides[1]!, sides[0]!] : [sides[0]!, sides[1]!];
       if (c.how === "use") {
-        return { goal: { point: { x: cx + nx * 36, y: cy + ny * 36 }, tolerance: 20 }, label: `the ${what}`, useLine: { line: l, index: target.id } };
+        return { goal: { point: near.point, tolerance: 20 }, label: `the ${what}`, useLine: { line: l, index: target.id } };
       }
-      // Walk-over lines (exits, teleporters, lifts): cross the line.
-      return { goal: { point: { x: cx - nx * 32, y: cy - ny * 32 }, tolerance: 20 }, label: `the ${what}` };
+      // Walk-over lines (exits, teleporters, lifts): reach the near side, then cross to the far side.
+      return { goal: { point: far.point, tolerance: 20 }, label: `the ${what}`, ...(c.kind === "lift" ? { lift: "walk" as const } : {}) };
     }
     case "item": {
       const o = engine.getObjects(4096).find((x) => x.id === target.id && x.kind === "item");
@@ -213,15 +228,17 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   const early = stopReason(start, start);
   if (early) return `goto: can't move: ${early}`;
   const lines = engine.getLines();
-  const planned = planTarget(engine, lines, start, target);
+  let grid = buildGrid(lines);
+  let heights = heightSignature(lines);
+  const planned = planTarget(engine, lines, grid, start, target);
   if (typeof planned === "string") return `goto: ${planned}`;
   let plan: Plan = planned;
   let legs = 0;
-  let grid = buildGrid(lines);
-  let heights = heightSignature(lines);
   let path = findPath(grid, { x: start.x, y: start.y }, plan.goal);
   if (!path) {
-    return `goto: no route to ${plan.label} from here. A closed door, a wall or a height difference is in the way: open a door first, ride a lift (walk onto it, wait for it to move), or pick another target.`;
+    const lifts = nearbyInteractives(lines, start, 1024, 12).filter((i) => i.kind === "lift");
+    const hint = lifts.length ? ` Lifts nearby: ${lifts.map((i) => `id ${i.id} (${i.how}, ${i.distance} units)`).join(", ")}; doom_goto a lift rides it.` : "";
+    return `goto: no route to ${plan.label} from here. A closed door, a wall or a climb is in the way: open the door first, ride a lift, or pick another target.${hint}`;
   }
   const seen = new Set(liveEnemies(engine).filter((o) => o.visible).map((o) => o.id));
   let wps = path.waypoints;
@@ -233,11 +250,16 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   let reason = "";
   let arrived = false;
 
-  const interrupt = (s: PlayerState): string | null => {
+  let lastHealth = start.health;
+  const interrupt = (s: PlayerState, onLift = false): string | null => {
     const end = stopReason(start, s);
     if (end) return end;
-    if (s.health < start.health) return `took damage (health ${s.health})`;
-    if (stopOnEnemy) {
+    // Stop when attacked. Damage from the floor (nukage, slime) has no attacker: keep going, the route leads out.
+    const hurt = s.health < lastHealth;
+    lastHealth = s.health;
+    if (hurt && s.attackerAngle !== null) return `took damage (health ${s.health}, attacked from ${describeTurn(s.attackerAngle)})`;
+    if (s.health < 25 && hurt) return `health is low (${s.health}), from the floor`;
+    if (stopOnEnemy && !onLift) {
       const e = liveEnemies(engine).find((o) => o.visible && !seen.has(o.id) && o.distance < 1000);
       if (e) return `spotted a ${name(e)} (id ${e.id}, ${e.distance} units, turn ${e.angle})`;
     }
@@ -269,7 +291,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
       }
     }
     while (wi < wps.length - 1 && Math.hypot(wps[wi]!.x - s.x, wps[wi]!.y - s.y) < 32) wi++;
-    const wp = wps[wi]!;
+    const wp = wps[wi] ?? { x: s.x, y: s.y }; // empty route: already there
     const final = wi === wps.length - 1;
     const d = Math.hypot(wp.x - s.x, wp.y - s.y);
     const diff = norm180((Math.atan2(wp.y - s.y, wp.x - s.x) * 180) / Math.PI - s.angle); // > 0: target is to the left
@@ -277,7 +299,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
       legs++;
       if (target.kind === "explore") {
         // Keep exploring: head for the next unvisited area until time is up or something happens.
-        plan = planTarget(engine, lines, s, target) as Plan;
+        plan = planTarget(engine, lines, grid, s, target) as Plan;
         const next = findPath(grid, { x: s.x, y: s.y }, plan.goal);
         if (next) {
           (path = next), (wps = next.waypoints), (wi = 0), (sincePlan = 0);
@@ -319,6 +341,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
     return `goto ${plan.label}: stopped: ${reason}`;
   }
   const where = path.partial ? `got as close as possible to ${plan.label} (the way there is blocked)` : `reached ${plan.label}`;
+  if (plan.lift === "walk" && !path.partial) return `goto: ${where}; ${rideLift(engine, sink, interrupt)}`;
   if (!plan.useLine || !use || path.partial) return `goto: ${where}`;
 
   // Face the line and press use.
@@ -333,6 +356,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   if (sink.left() <= 0) return `goto: ${where}, but ran out of time before pressing use`;
   sink.apply({ f: 0, s: 0, t: 0, b: BT_USE, n: 1 });
   const c = classify(l)!;
+  if (c.kind === "lift") return `goto: ${where} and pressed use; ${boardLift(engine, sink, plan.useLine.index, interrupt)}`;
   if (c.kind === "door" || c.kind === "locked_door") {
     // Wait for the door to open (it takes about a second).
     for (let i = 0; i < 40 && sink.left() > 0; i++) {
@@ -349,4 +373,61 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   for (let i = 0; i < 4 && sink.left() > 0; i++) sink.apply({ f: 0, s: 0, t: 0, b: 0, n: 1 });
   const after = stopReason(start, engine.getState());
   return `goto: ${where} and pressed use${after ? `: ${after}` : ""}`;
+}
+
+function describeTurn(a: number): string {
+  const abs = Math.abs(a);
+  if (abs <= 15) return "ahead";
+  if (abs >= 150) return "behind";
+  return `${Math.round(abs)}° ${a < 0 ? "left" : "right"}`;
+}
+
+/** Waits on a lift until it has moved and stopped (up to ~4 s). */
+function rideLift(engine: Engine, sink: TicSink, interrupt: (s: PlayerState, onLift?: boolean) => string | null): string {
+  const z0 = engine.getState().z;
+  let moved = false, still = 0, lastZ = z0;
+  for (let i = 0; i < 140 && sink.left() > 0; i++) {
+    const s = engine.getState();
+    const stop = interrupt(s, true); // a ride can't be stopped halfway: only an attack or death ends it early
+    if (stop) return `stopped on the lift: ${stop}`;
+    if (Math.abs(s.z - z0) > 2) moved = true;
+    still = Math.abs(s.z - lastZ) < 0.5 ? still + 1 : 0;
+    lastZ = s.z;
+    if (moved && still >= 6) return `rode the lift ${s.z < z0 ? "down" : "up"} ${Math.round(Math.abs(s.z - z0))} units; walk off now`;
+    if (!moved && i >= 50) return "the lift didn't move";
+    sink.apply({ f: 0, s: 0, t: 0, b: 0, n: 1 });
+  }
+  return moved ? "still riding the lift (time's up)" : "the lift didn't move (time's up)";
+}
+
+/** After pressing use on a lift: wait until it's level with you, step on, and ride it. */
+function boardLift(engine: Engine, sink: TicSink, index: number, interrupt: (s: PlayerState, onLift?: boolean) => string | null): string {
+  const level = () => {
+    const l = engine.getLines()[index]!;
+    return l.backFloor !== null && Math.abs(l.frontFloor - l.backFloor) <= 24;
+  };
+  for (let i = 0; i < 105 && !level() && sink.left() > 0; i++) {
+    const stop = interrupt(engine.getState(), true);
+    if (stop) return `waiting for the lift: ${stop}`;
+    sink.apply({ f: 0, s: 0, t: 0, b: 0, n: 1 });
+  }
+  if (!level()) return "the lift didn't come down to you";
+  // Step across the line onto the platform.
+  const p = engine.getState();
+  const l = engine.getLines()[index]!;
+  const [cx, cy] = closestPoint(l, p.x, p.y);
+  const len = Math.hypot(l.x2 - l.x1, l.y2 - l.y1) || 1;
+  let nx = -(l.y2 - l.y1) / len, ny = (l.x2 - l.x1) / len; // points to the back side
+  const onBack = l.tag && l.backSectorTag === l.tag, onFront = l.tag && l.frontSectorTag === l.tag;
+  if (onFront || (!onBack && (p.x - cx) * nx + (p.y - cy) * ny > 0)) (nx = -nx), (ny = -ny); // towards the platform
+  const tx = cx + nx * 48, ty = cy + ny * 48;
+  for (let i = 0; i < 35 && sink.left() > 0; i++) {
+    const s = engine.getState();
+    const d = Math.hypot(tx - s.x, ty - s.y);
+    if (d < 16) break;
+    const diff = norm180((Math.atan2(ty - s.y, tx - s.x) * 180) / Math.PI - s.angle);
+    const t = clampTurn(diff * FRAC_DEG);
+    sink.apply({ f: Math.abs(diff - t / FRAC_DEG) < 30 ? WALK : 0, s: 0, t, b: 0, n: 1 });
+  }
+  return rideLift(engine, sink, interrupt);
 }
