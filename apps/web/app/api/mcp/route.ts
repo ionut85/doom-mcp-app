@@ -3,7 +3,7 @@ import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@model
 import { z } from "zod";
 import { ACTIONS, MAX_TICS_PER_STEP } from "@doom-player/doom-core/core";
 import { loadViewerHtml, publicOrigin } from "@/lib/assets";
-import { act, frame, inputLog, LIMITS, logResponse, newGame, observeSession, stats, turn, type Result } from "@/lib/game";
+import { act, autoAttack, autoGoto, frame, inputLog, LIMITS, logResponse, newGame, observeSession, stats, turn, type GotoRequest, type Result } from "@/lib/game";
 import { observationText } from "@/lib/observe";
 import { rateLimit } from "@/lib/ratelimit";
 import { PERCEPTIONS, sessionStore } from "@/lib/session";
@@ -32,6 +32,11 @@ Moving and exploring (state/both perception includes a map and an "interactives"
 - Doors open with "use": get within 64 units, face the door (|turn| small) and doom_act ["use"] for 1-2 tics; the door stays open for a few seconds, so walk through right away. "in_use_range": true means use will work now. Locked doors (L) need the key of that color first.
 - Walls that are not doors never open. If "moved 0 units" appears, you are against a wall: turn toward an opening on the map.
 - Use longer moves (21-35 tics with run) through cleared areas, shorter ones (7-14 tics) near enemies.
+
+Assisted moves (smoother to watch, fewer calls):
+- doom_goto walks a planned route for a few seconds: to a door or switch (interactive_id, it presses use for you), an item (item_id), a map position (x, y), or explore=true for unvisited space. Prefer it over step-by-step walking.
+- doom_attack aims and fires at enemies in range until they're dead or something changes. Prefer it for routine fights; use doom_turn + doom_act fire for precise shots, and doom_act for strafing, backing off and switching weapons.
+- Both return a "result" line that says why they stopped (enemy spotted, took damage, blocked, time's up): read it and decide the next move.
 - When dead, doom_act ["use"] restarts the level.`;
 
 const caption = z.string().max(LIMITS.maxCaptionLength).optional().describe("One short sentence about what you are doing and why, shown to the audience, e.g. 'Turning to face the imp on the left'.");
@@ -120,6 +125,58 @@ const handler = createMcpHandler(
         inputSchema: z.object({ session_id: sessionId, degrees: z.number().min(-180).max(180), caption }),
       },
       async ({ session_id, degrees, caption }) => toolResult(await turn(session_id, degrees, caption)),
+    );
+
+    server.registerTool(
+      "doom_attack",
+      {
+        title: "DOOM: attack (assisted)",
+        description: `Assisted fighting: turns to an enemy, fires whenever it's in the crosshair, and moves on to the next visible enemy after a kill, for up to max_seconds (default 3, max ${LIMITS.maxAutoTics / 35}). With fists or the chainsaw it walks in to hit. Stops early when no enemy is left in sight, you lose ${25}+ health, you run out of ammo, the target gets out of range, or you die. Only attacks enemies within the current weapon's useful range (pistol ~900 units, shotgun ~700). Returns the observation plus a "result" line saying what happened and why it stopped. You still decide when to fight, retreat, switch weapons or heal.`,
+        inputSchema: z.object({
+          session_id: sessionId,
+          target_id: z.number().int().optional().describe("id from state.enemies to attack first; default: the nearest visible enemy"),
+          max_seconds: z.number().min(0.2).max(LIMITS.maxAutoTics / 35).optional(),
+          caption,
+        }),
+      },
+      async ({ session_id, target_id, max_seconds, caption }) => toolResult(await autoAttack(session_id, { targetId: target_id, maxSeconds: max_seconds, caption })),
+    );
+
+    server.registerTool(
+      "doom_goto",
+      {
+        title: "DOOM: go to (assisted)",
+        description: `Assisted movement: plans a route around walls and walks it at running speed, for up to max_seconds (default 4, max ${LIMITS.maxAutoTics / 35}). Give exactly one target:
+- interactive_id: a door, switch, lift or exit from state.interactives. At a door or switch it faces it and presses use (and waits for a door to open), unless use=false.
+- item_id: an item from state.nearby_items, to pick it up.
+- x and y: a map position (state.position is yours; the map is 64 units per character, north up, so 3 characters right and 2 up of @ is x+192, y+128).
+- explore: true, to head for the nearest area you haven't visited.
+It stops early when a new enemy comes into sight (unless stop_on_enemy=false), when you take damage, or when the way is blocked. Routes can't pass closed doors or ride lifts: open the door or step onto the lift first. Returns the observation plus a "result" line saying what happened and why it stopped.`,
+        inputSchema: z.object({
+          session_id: sessionId,
+          interactive_id: z.number().int().optional(),
+          item_id: z.number().int().optional(),
+          x: z.number().optional(),
+          y: z.number().optional(),
+          explore: z.boolean().optional(),
+          use: z.boolean().optional().describe("press use on arrival at a door, switch or lift (default true)"),
+          stop_on_enemy: z.boolean().optional().describe("stop when a new enemy comes into sight (default true)"),
+          max_seconds: z.number().min(0.2).max(LIMITS.maxAutoTics / 35).optional(),
+          caption,
+        }),
+      },
+      async ({ session_id, interactive_id, item_id, x, y, explore, use, stop_on_enemy, max_seconds, caption }) => {
+        const targets: GotoRequest[] = [];
+        if (interactive_id !== undefined) targets.push({ interactive_id });
+        if (item_id !== undefined) targets.push({ item_id });
+        if (x !== undefined || y !== undefined) {
+          if (x === undefined || y === undefined) throw new Error("Give both x and y.");
+          targets.push({ x, y });
+        }
+        if (explore) targets.push({ explore: true });
+        if (targets.length !== 1) throw new Error("Give exactly one target: interactive_id, item_id, x+y, or explore=true.");
+        return toolResult(await autoGoto(session_id, targets[0]!, { use, stopOnEnemy: stop_on_enemy, maxSeconds: max_seconds, caption }));
+      },
     );
 
     server.registerTool(

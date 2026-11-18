@@ -27,6 +27,8 @@ const IGNORED = new Set([48]); // scrolling wall texture
 export type InteractiveKind = "door" | "locked_door" | "switch" | "exit_switch" | "exit" | "lift" | "teleporter" | "trigger";
 
 export interface Interactive {
+  /** pass to doom_goto as interactive_id */
+  id: number;
   kind: InteractiveKind;
   /** how to use it */
   how: "use" | "walk over" | "walk onto";
@@ -41,7 +43,7 @@ export interface Interactive {
   in_use_range?: boolean;
 }
 
-function classify(l: MapLine): { kind: InteractiveKind; how: Interactive["how"]; key?: string } | null {
+export function classify(l: MapLine): { kind: InteractiveKind; how: Interactive["how"]; key?: string } | null {
   const s = l.special;
   if (!s || IGNORED.has(s)) return null;
   if (DOORS.has(s)) return { kind: "door", how: "use" };
@@ -56,13 +58,13 @@ function classify(l: MapLine): { kind: InteractiveKind; how: Interactive["how"];
 }
 
 /** Closed if there is no room for the player between the back sector's floor and ceiling. */
-function doorState(l: MapLine): "open" | "closed" {
+export function doorState(l: MapLine): "open" | "closed" {
   if (l.backFloor === null || l.backCeil === null) return "closed";
   return l.backCeil - l.backFloor >= PLAYER_HEIGHT ? "open" : "closed";
 }
 
 /** Whether a line stops the player (wall, closed door, too-high step). */
-function blocks(l: MapLine): boolean {
+export function blocks(l: MapLine): boolean {
   if (l.backFloor === null || l.backCeil === null) return true;
   if (l.flags & 1) return true; // ML_BLOCKING
   const floor = Math.max(l.frontFloor, l.backFloor);
@@ -86,7 +88,7 @@ function turnTo(p: PlayerState, x: number, y: number): number {
   return Math.round((((bearing - heading + 540) % 360) - 180) * 10) / 10;
 }
 
-function closestPoint(l: MapLine, x: number, y: number): [number, number] {
+export function closestPoint(l: MapLine, x: number, y: number): [number, number] {
   const dx = l.x2 - l.x1, dy = l.y2 - l.y1;
   const len2 = dx * dx + dy * dy || 1;
   const t = Math.max(0, Math.min(1, ((x - l.x1) * dx + (y - l.y1) * dy) / len2));
@@ -96,16 +98,17 @@ function closestPoint(l: MapLine, x: number, y: number): [number, number] {
 /** Interactive lines within `range`, merged when they belong to the same object (e.g. both faces of a door). */
 export function nearbyInteractives(lines: MapLine[], p: PlayerState, range = 768, max = 6): Interactive[] {
   const found: (Interactive & { cx: number; cy: number; special: number })[] = [];
-  for (const l of lines) {
+  lines.forEach((l, id) => {
     const c = classify(l);
-    if (!c || c.kind === "trigger") continue;
+    if (!c || c.kind === "trigger") return;
     const [cx, cy] = closestPoint(l, p.x, p.y);
     const distance = Math.round(Math.hypot(cx - p.x, cy - p.y));
-    if (distance > range) continue;
+    if (distance > range) return;
     const mx = (l.x1 + l.x2) / 2, my = (l.y1 + l.y2) / 2;
-    if (found.some((f) => f.special === l.special && Math.hypot(f.cx - mx, f.cy - my) < 96 && f.distance <= distance)) continue;
+    if (found.some((f) => f.special === l.special && Math.hypot(f.cx - mx, f.cy - my) < 96 && f.distance <= distance)) return;
     const turn = turnTo(p, cx, cy);
     const item: Interactive & { cx: number; cy: number; special: number } = {
+      id,
       kind: c.kind,
       how: c.how,
       ...(c.key ? { key: c.key } : {}),
@@ -120,7 +123,7 @@ export function nearbyInteractives(lines: MapLine[], p: PlayerState, range = 768
     const dup = found.findIndex((f) => f.special === l.special && Math.hypot(f.cx - mx, f.cy - my) < 96);
     if (dup >= 0) found.splice(dup, 1, item);
     else found.push(item);
-  }
+  });
   return found
     .sort((a, b) => a.distance - b.distance)
     .slice(0, max)

@@ -4,6 +4,7 @@
 //   pnpm eval --perception all --skill 2,3 --runs 5           # full matrix, Claude
 //   pnpm eval --policy scripted --perception state --runs 5    # no-AI baseline
 //   pnpm eval --dry-run                                        # plumbing check, no API calls
+//   pnpm eval --no-assist ...                                  # without doom_attack / doom_goto
 //
 // Per run it writes eval-out/<run>/{summary.json,transcript.json} and appends
 // the summary to docs/eval/results.jsonl. `pnpm eval:report` turns that into docs/EVAL.md.
@@ -32,6 +33,8 @@ const { values: opt } = parseArgs({
     label: { type: "string", default: "" },
     "max-cost": { type: "string", default: "8" }, // $ per run; the run stops cleanly when exceeded
     "dry-run": { type: "boolean", default: false },
+    // Hide doom_attack / doom_goto, for results comparable with runs from before they existed.
+    "no-assist": { type: "boolean", default: false },
   },
 });
 
@@ -348,6 +351,7 @@ const listed = await rpc<{ tools: { name: string; description: string; inputSche
 const tools: Anthropic.Beta.BetaTool[] = listed.tools
   .filter((t) => !(t._meta?.ui?.visibility ?? ["model"]).every((v: string) => v === "app")) // model-visible only
   .filter((t) => t.name !== "doom_new_game") // the harness starts the game
+  .filter((t) => !(opt["no-assist"] && (t.name === "doom_attack" || t.name === "doom_goto")))
   .map((t) => {
     const { $schema: _drop, ...schema } = t.inputSchema;
     return { name: t.name, description: t.description, input_schema: schema };

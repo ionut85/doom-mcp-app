@@ -24,6 +24,7 @@ Prompt:
 
 - **Skill 2** is the safer choice live: in our evals Claude finished it in 74 moves without taking damage. On **skill 3**, the default ("Hurt me plenty"), it took 140 moves and finished with 39 health.
 - **Claude.ai stops a long turn after a number of tool calls.** When Claude stops and summarizes, type **continue**. A full level takes a few "continues".
+- **Claude mostly uses the assisted moves** (`doom_goto`, `doom_attack`): each covers a few seconds of game time, so the game moves for longer between pauses. To show Claude aiming by itself, ask it to "use doom_turn and doom_act only".
 - **What to point out while it plays:**
   - captions under the screen;
   - the game freezing while Claude thinks (virtual time);
@@ -103,7 +104,7 @@ ChatGPT implements the same MCP Apps standard as Claude, so the same server and 
 
 | # | Do | Expected | If not, note |
 |---|---|---|---|
-| 1 | Look at the app's tool list | `doom_new_game`, `doom_act`, `doom_turn`, `doom_observe`. The viewer-only tools (`doom_frame`, `doom_log`, `doom_stats`) should not be offered to the model | Which tools appear. If the viewer-only ones show up, ChatGPT ignores `visibility: ["app"]` |
+| 1 | Look at the app's tool list | `doom_new_game`, `doom_act`, `doom_turn`, `doom_goto`, `doom_attack`, `doom_observe`. The viewer-only tools (`doom_frame`, `doom_log`, `doom_stats`) should not be offered to the model | Which tools appear. If the viewer-only ones show up, ChatGPT ignores `visibility: ["app"]` |
 | 2 | Send "Start a game of DOOM" | The DOOM viewer renders inline under the reply, with the header saying **ChatGPT is playing** and the E1M1 start frame | Whether a viewer appears at all. If the header says Claude, note `hostName` in Diagnostics |
 | 3 | Send "Clear E1M1 by yourself. Caption every move." | The game moves, captions update under the screen, and the header badge says **35 FPS** (smooth playback) | Badge says *still frames* or *loading engine…* → note `smoothError` and `cspViolations` |
 | 4 | Let it play | It keeps playing until it stops on its own | How many moves before it stops; whether "continue" resumes it |

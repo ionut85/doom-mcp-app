@@ -151,7 +151,7 @@ claude-plays-doom/
 - [x] Tune tool descriptions + server instructions; a system-prompt-style "how to play DOOM" guide in the server `instructions`.
 - [x] Evaluate 5 runs per perception mode on E1M1 (skill 2 and 3): kills, damage taken, distance explored, exits reached, tokens/action. Record results in `docs/EVAL.md`. Good slide material.
 - [x] Optional ASCII local map *(done, in state/both perception)*.
-- [ ] Optional `doom_aim_nearest` assist *(not built: `turn` + `in_crosshair` already make aiming reliable)*.
+- [x] Optional `doom_aim_nearest` assist *(built later as `doom_attack` plus `doom_goto`, for fluidity rather than accuracy: see Phase 6 results)*.
 
 ### Phase 6: Demo polish
 - [x] Smooth local replay in the viewer (stretch).
@@ -299,6 +299,13 @@ claude-plays-doom/
   - Verified in claude.ai on 2026-11-13: the user ran the checks in `docs/voice.md` and `docs/DEMO.md` (smooth playback, Tell Claude, microphone) and reported them all working.
   - The box doesn't use a `<form>`: sandboxed iframes without `allow-forms` never fire `submit`.
 - **`/replay`.** Re-renders saved runs (`apps/web/public/replays/*.json`: input log plus captions with tics, exported by `scripts/export-replay.ts` and verified to reach the exit) at 0.5–4×, with Claude's captions burned in. **Record video** saves a WebM through `MediaRecorder`, the demo's fallback video.
+- **Assisted moves (2026-11-18).** Claude averaged ~0.44 s of game time per call and ~4 s between calls in claude.ai, so the viewer moved only ~11% of the time.
+  - `doom_goto` plans on a 16-unit grid built from the linedefs (blocking lines inflated by 20 units). It re-plans every 10 tics, and rebuilds the grid when floor or ceiling heights change (doors, lifts). It runs, presses use at doors and switches, and waits for doors to open. `explore` chains to the next unvisited area.
+  - `doom_attack` aims at and fires on enemies in range one at a time (exact angles, fire only when in the crosshair), and walks in with melee weapons.
+  - Both run tic by tic on the server and log ordinary TicSteps (turns rounded so runs merge), so replay, smooth playback and Play yourself are unchanged. They stop early with a `result` line saying why.
+  - In a scripted loop on E1M1 they averaged ~2.2 s of game time per call (5×).
+  - Limits: routes can't pass closed doors or ride lifts; solid decorations aren't in the grid (handled by sidestepping when stuck).
+  - `pnpm eval --no-assist` hides them, so results stay comparable with the earlier evals.
 - **Docs.** `docs/DEMO.md` is the run-sheet (prompts for three modes, checklist, fallbacks, talking points). `docs/voice.md` covers voice. The README diagram is updated.
 
 ### References

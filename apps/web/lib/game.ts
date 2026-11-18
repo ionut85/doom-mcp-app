@@ -5,12 +5,15 @@
 import {
   compileStep,
   compileTurn,
+  MAX_TICS_PER_STEP,
+  TICRATE,
   totalTics,
   type Engine,
   type PlayerState,
   type Step,
   type TicStep,
 } from "@doom-player/doom-core/core";
+import { attack, goto, type GotoTarget, type TicSink } from "./autopilot";
 import { bootEngine } from "./engine-host";
 import { encodePng } from "./frame";
 import { cellKey } from "./mapview";
@@ -30,6 +33,8 @@ const MAX_VISITED = 4000;
 export const LIMITS = {
   maxStepsPerCall: 8,
   maxTicsPerCall: 105,
+  /** doom_attack / doom_goto: up to 6 s of game time per call */
+  maxAutoTics: 210,
   /** ~14 minutes of game time per session */
   maxSessionTics: 30_000,
   maxCaptionLength: 140,
@@ -109,26 +114,40 @@ export async function newGame(opts: { skill: number; episode: number; map: numbe
   return { session, obs, stats: { tool: "doom_new_game", cacheHit: false, replayTics: 0, replayMs: performance.now() - t0, totalMs: performance.now() - t0 } };
 }
 
-async function advance(tool: string, id: string, newSteps: TicStep[], caption: string | undefined, label: string): Promise<Result> {
+/** Drives the engine for one call; returns a one-line result for the model (assisted moves). */
+type Runner = (engine: Engine, sink: TicSink, visited: Set<string>) => string | void;
+
+async function advance(tool: string, id: string, maxTics: number, run: Runner, caption: string | undefined, label: string): Promise<Result> {
   const t0 = performance.now();
   const store = sessionStore();
   const s = await store.get(id);
-  const added = totalTics(newSteps);
-  if (totalTics(s.steps) + added > LIMITS.maxSessionTics) {
-    throw new Error(`Session length limit reached (${LIMITS.maxSessionTics} tics). Start a new game with doom_new_game.`);
-  }
+  const budget = Math.min(maxTics, LIMITS.maxSessionTics - totalTics(s.steps));
+  if (budget <= 0) throw new Error(`Session length limit reached (${LIMITS.maxSessionTics} tics). Start a new game with doom_new_game.`);
   const { engine, cacheHit, replayTics, replayMs } = await engineFor(s);
   const prev: PlayerState = engine.getState();
-  // Apply in chunks of a few tics so the map's "visited" overlay follows the path.
   const visited = new Set(s.visited ?? []);
-  for (const st of newSteps) {
-    for (let left = st.n; left > 0; left -= VISIT_EVERY) {
-      engine.applyTicStep({ ...st, n: Math.min(VISIT_EVERY, left) });
-      const p = engine.getState();
-      if (p.gamestate === "level" && !p.dead) visited.add(cellKey(p.x, p.y));
-    }
-  }
+  const newSteps: TicStep[] = [];
+  let used = 0;
+  const sink: TicSink = {
+    left: () => budget - used,
+    apply(st) {
+      if (st.n < 1 || used + st.n > budget) throw new Error(`internal: step of ${st.n} tics exceeds the call budget`);
+      // Apply in chunks of a few tics so the map's "visited" overlay follows the path.
+      for (let left = st.n; left > 0; left -= VISIT_EVERY) {
+        engine.applyTicStep({ ...st, n: Math.min(VISIT_EVERY, left) });
+        const p = engine.getState();
+        if (p.gamestate === "level" && !p.dead) visited.add(cellKey(p.x, p.y));
+      }
+      used += st.n;
+      // Merge runs of the same command (assisted moves emit one tic at a time). Same tics, shorter log.
+      const last = newSteps[newSteps.length - 1];
+      if (last && last.f === st.f && last.s === st.s && last.t === st.t && last.b === st.b && last.n + st.n <= MAX_TICS_PER_STEP) last.n += st.n;
+      else newSteps.push({ ...st });
+    },
+  };
+  const note = run(engine, sink, visited) || undefined;
   const obs = observe(engine, prev, s.perception, visited);
+  if (note) obs.state.result = note;
 
   const expected = s.version;
   const next: Session = { ...s, steps: [...s.steps, ...newSteps], visited: [...visited].slice(-MAX_VISITED), version: expected + 1, updatedAt: Date.now() };
@@ -140,6 +159,13 @@ async function advance(tool: string, id: string, newSteps: TicStep[], caption: s
   return { session: next, obs, stats: { tool, cacheHit, replayTics, replayMs, totalMs: performance.now() - t0 } };
 }
 
+function fixed(steps: TicStep[]): Runner {
+  return (_engine, sink) => {
+    if (totalTics(steps) > sink.left()) throw new Error(`Session length limit reached (${LIMITS.maxSessionTics} tics). Start a new game with doom_new_game.`);
+    for (const st of steps) sink.apply(st);
+  };
+}
+
 export function describeSteps(steps: Step[]): string {
   return steps.map((s) => `${s.actions.length ? s.actions.join("+") : "wait"}×${s.tics}`).join(", ");
 }
@@ -149,11 +175,50 @@ export async function act(id: string, steps: Step[], caption?: string): Promise<
   const compiled = steps.map(compileStep); // validates actions and tics
   const tics = totalTics(compiled);
   if (tics > LIMITS.maxTicsPerCall) throw new Error(`At most ${LIMITS.maxTicsPerCall} tics per call (got ${tics}).`);
-  return advance("doom_act", id, compiled, caption, describeSteps(steps));
+  return advance("doom_act", id, tics, fixed(compiled), caption, describeSteps(steps));
 }
 
 export async function turn(id: string, degrees: number, caption?: string): Promise<Result> {
-  return advance("doom_turn", id, compileTurn(degrees), caption, `turn ${degrees > 0 ? "right" : "left"} ${Math.abs(Math.round(degrees))}°`);
+  const steps = compileTurn(degrees);
+  return advance("doom_turn", id, Math.max(1, totalTics(steps)), fixed(steps), caption, `turn ${degrees > 0 ? "right" : "left"} ${Math.abs(Math.round(degrees))}°`);
+}
+
+const autoTics = (seconds: number | undefined, dflt: number) =>
+  Math.max(1, Math.min(LIMITS.maxAutoTics, Math.round((seconds ?? dflt) * TICRATE)));
+
+/** Assisted: aim at and shoot the target (or the nearest visible enemy), then the next one, for up to max_seconds. */
+export async function autoAttack(id: string, opts: { targetId?: number; maxSeconds?: number; caption?: string }): Promise<Result> {
+  return advance("doom_attack", id, autoTics(opts.maxSeconds, 3), (engine, sink) => attack(engine, sink, { targetId: opts.targetId }), opts.caption, "attack");
+}
+
+export type GotoRequest =
+  | { interactive_id: number }
+  | { item_id: number }
+  | { x: number; y: number }
+  | { explore: true };
+
+/** Assisted: plan a route and walk it, for up to max_seconds. */
+export async function autoGoto(id: string, req: GotoRequest, opts: { use?: boolean; stopOnEnemy?: boolean; maxSeconds?: number; caption?: string }): Promise<Result> {
+  const label =
+    "interactive_id" in req ? "go to door/switch" : "item_id" in req ? "go to item" : "explore" in req ? "explore" : `go to (${Math.round(req.x)}, ${Math.round(req.y)})`;
+  return advance(
+    "doom_goto",
+    id,
+    autoTics(opts.maxSeconds, 4),
+    (engine, sink, visited) => {
+      const target: GotoTarget =
+        "interactive_id" in req
+          ? { kind: "interactive", id: req.interactive_id }
+          : "item_id" in req
+            ? { kind: "item", id: req.item_id }
+            : "explore" in req
+              ? { kind: "explore", visited }
+              : { kind: "position", x: req.x, y: req.y };
+      return goto(engine, sink, target, { use: opts.use, stopOnEnemy: opts.stopOnEnemy });
+    },
+    opts.caption,
+    label,
+  );
 }
 
 export async function observeSession(id: string): Promise<Result> {

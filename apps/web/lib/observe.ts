@@ -40,6 +40,8 @@ export interface EnemyView {
 }
 
 export interface ThingView {
+  /** for items: pass to doom_goto as item_id */
+  id: number;
   type: string;
   distance: number;
   /** degrees to turn to face it */
@@ -72,6 +74,8 @@ export interface StateObservation {
   map_legend: string;
   map: string[];
   events: string[];
+  /** what doom_attack / doom_goto did and why it stopped */
+  result?: string;
   hint?: string;
 }
 
@@ -150,7 +154,7 @@ function enemyView(o: GameObject): EnemyView {
   };
 }
 
-const thing = (o: GameObject): ThingView => ({ type: friendlyName(o.type), distance: o.distance, turn: o.angle });
+const thing = (o: GameObject): ThingView => ({ id: o.id, type: friendlyName(o.type), distance: o.distance, turn: o.angle });
 
 export function hudLine(s: PlayerState): HudLine {
   const ammoKey = AMMO_FOR_WEAPON[s.weapon];
@@ -211,12 +215,12 @@ export function observe(engine: Engine, prev: PlayerState | null, perception: Pe
   };
   if (st.status === "dead") st.hint = "You are dead. doom_act with actions ['use'] restarts the level.";
   else if (st.status === "level_complete") st.hint = "Level complete! doom_act with ['use'] a few times to continue to the next map.";
-  else if (enemies.some((e) => e.in_crosshair)) st.hint = "An enemy is in your crosshair: fire.";
-  else if (enemies.length) st.hint = `Nearest enemy is ${describeAngle(enemies[0]!.turn)}: doom_turn(${enemies[0]!.turn}) to aim, then fire.`;
+  else if (enemies.some((e) => e.in_crosshair)) st.hint = "An enemy is in your crosshair: fire, or doom_attack.";
+  else if (enemies.length) st.hint = `Nearest enemy is ${describeAngle(enemies[0]!.turn)}: doom_attack, or doom_turn(${enemies[0]!.turn}) then fire.`;
   else if (interactives.some((i) => i.in_use_range && i.kind !== "locked_door" && i.state !== "open"))
     st.hint = "Something usable is right in front of you: doom_act ['use'] for 1-2 tics.";
   else if (interactives.length)
-    st.hint = `No enemies in sight. Nearest ${interactives[0]!.kind.replace("_", " ")} is ${interactives[0]!.distance} units away: doom_turn(${interactives[0]!.turn}) then move to it. Or head for blank (unvisited) space on the map.`;
+    st.hint = `No enemies in sight. Nearest ${interactives[0]!.kind.replace("_", " ")} (id ${interactives[0]!.id}) is ${interactives[0]!.distance} units away: doom_goto(interactive_id=${interactives[0]!.id}). Or doom_goto(explore=true) to head for unvisited space.`;
 
   const png = perception === "state" ? undefined : encodePng(engine.render(), engine.width, engine.height, 2);
   return { state: st, hud, png };
@@ -226,7 +230,7 @@ export function observe(engine: Engine, prev: PlayerState | null, perception: Pe
 export function observationText(o: Observation, perception: Perception): string {
   if (perception === "vision") {
     const h = o.hud;
-    return JSON.stringify({ hud: { health: h.health, armor: h.armor, ammo: h.ammo, weapon: h.weapon }, status: h.status });
+    return JSON.stringify({ hud: { health: h.health, armor: h.armor, ammo: h.ammo, weapon: h.weapon }, status: h.status, ...(o.state.result ? { result: o.state.result } : {}) });
   }
   return JSON.stringify(o.state);
 }
