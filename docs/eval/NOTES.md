@@ -53,7 +53,24 @@ Two single runs with a 200-action budget, Opus 5.5 at medium effort, `both` perc
 - **Not a statistic.** These are one run each. They show the level is finishable, not how often it is finished.
 - **Cost.** Lower than estimated, because both runs stopped at the exit. The skill-3 game made 92 requests with 9.4M cached input tokens and only 186 uncached.
 
+## Assisted moves: `doom_goto` and `doom_attack` (labels `assist`, `assist-long-200`, 2026-11-18)
+
+Same setup as the v2 `both` / skill 3 cell (Opus 5.5, medium effort, 50 actions), with the two assisted tools added. The v2 runs are the unassisted baseline; `pnpm eval --no-assist` reproduces it.
+
+| | Runs | Kills | Game time per run | Game time per action | Exit | Cells | Cost/run |
+|---|---|---|---|---|---|---|---|
+| Unassisted (v2) | 5 | 6.0 every run | 23 s | 0.46 s | 0 of 5 | 20 | $0.80 |
+| Assisted | 2 | 11 and 12 | 76 s | 1.5 s | **1 of 2, in 50 actions** | 30 | $1.03 |
+
+- **Fluidity.** Each action covers about 3.3× more game time, so in claude.ai the viewer moves about a third of the time instead of a tenth.
+- **Tool use.** Claude chose the assisted tools for most actions: 31 of 50 were `doom_goto` and 7–10 were `doom_attack`. It still used `doom_turn` and `doom_act` for stepping onto items and fine aiming.
+- **Results.** Kills nearly doubled. One run reached the exit in 50 actions; unassisted, the only skill-3 finish took 140 actions.
+- **Caveat.** Only 2 runs: the third failed before starting (an OAuth token refresh race between parallel runs, no cost).
+- **The long run didn't finish.** With up to 200 actions it hit the $6 cost cap after 171 actions: 18 kills, no deaths, 76 cells explored, 235 s of game time, but no exit. The transcript shows it lost most of its actions around lifts and ledges. `doom_goto` can't plan through a lift or a drop off a ledge (it treats any height step over 24 units as a wall in both directions), so Claude worked them out step by step. One-way drops and lift riding are the next things to add to the route planner.
+- **Cost per action** is higher (about $0.02 vs $0.016 at 50 actions), because results carry more game per call. The long run reached $0.035 per action as its history grew.
+
 ## Spend
 
-- About $30 in total: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
+- About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
+- Assisted runs: $8.09 ($2.06 for the two 50-action runs, $6.03 for the long run). Total so far: about $38.
 - Run cost scales faster than linearly with the action budget, since every request re-reads the growing history.
