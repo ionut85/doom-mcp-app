@@ -127,6 +127,6 @@ ChatGPT implements the same MCP Apps standard as Claude, so the same server and 
 | 7 | | |
 | 8 | | |
 | 9 | | |
-| 10 | | |
+| 10 | Pass (2026-11-18) | Voice mode calls the DOOM tools and the game plays. Claude's voice mode can't (see `docs/voice.md`) |
 
 Tester, date, plan, browser:
