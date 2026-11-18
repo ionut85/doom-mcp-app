@@ -5,7 +5,7 @@
 
 import type { Engine, GameObject, MapLine, PlayerState, TicStep } from "@doom-player/doom-core/core";
 import { cellKey, classify, closestPoint, doorState, nearbyInteractives } from "./mapview";
-import { buildGrid, findPath, type Goal, type NavGrid, type Point } from "./nav";
+import { buildGrid, clearLine, findPath, hurtsAt, isBlocked, type Goal, type NavGrid, type Point } from "./nav";
 import { friendlyName } from "./names";
 
 /** Receives each tic's command. `left` is how many tics the call may still use. */
@@ -41,6 +41,71 @@ function weaponRange(weapon: string): number {
   return SIGHT_RANGE;
 }
 
+/** Fists only: a punch needs the enemy right next to you, so don't chase anything farther than this. */
+const FIST_REACH = 200;
+const AMMO_PICKUP = /^(ammo_clip|box_of_bullets|shells|box_of_shells|shotgun|super_shotgun|chaingun|chainsaw|backpack|rocket|box_of_rockets|rocket_launcher|energy_cell|energy_cell_pack|plasma_rifle)$/;
+
+/** Where to get ammo, for out-of-ammo messages. */
+function ammoAdvice(engine: Engine): string {
+  const near = engine.getObjects(SIGHT_RANGE).find((o) => o.kind === "item" && AMMO_PICKUP.test(name(o)));
+  return near
+    ? `Nearest ammo or weapon: ${name(near)} (item_id ${near.id}, ${near.distance} units): doom_goto(item_id=${near.id}).`
+    : "No ammo nearby that I know of: explore for some (doom_goto explore=true) and avoid fights meanwhile.";
+}
+
+/** Route grid with solid things and damaging floors, for the map as it is now. */
+function navGrid(engine: Engine, lines: MapLine[], passable?: Set<number>): NavGrid {
+  return buildGrid(lines, { obstacles: engine.getObstacles(), sectors: (x0, y0, w, h, c) => engine.sectorGrid(x0, y0, w, h, c), passable });
+}
+
+/**
+ * Closed doors the player can open (unlocked, or locked with the key in hand). Returns every
+ * line around each door's sector (so the route can pass through it) mapped to the usable face
+ * nearest the player.
+ */
+function openableDoors(lines: MapLine[], p: PlayerState): Map<number, number> {
+  const faces = new Map<number, number[]>(); // door sector -> usable face lines
+  lines.forEach((l, i) => {
+    const c = classify(l);
+    if (!c || (c.kind !== "door" && c.kind !== "locked_door") || c.how !== "use" || doorState(l) !== "closed") return;
+    if (c.kind === "locked_door" && !p.keys.some((k) => k.startsWith(c.key ?? "?"))) return;
+    const sec = l.backSector;
+    if (sec < 0) return;
+    (faces.get(sec) ?? faces.set(sec, []).get(sec)!).push(i);
+  });
+  const out = new Map<number, number>();
+  for (const [sec, fs] of faces) {
+    const d = (i: number) => {
+      const [cx, cy] = closestPoint(lines[i]!, p.x, p.y);
+      return Math.hypot(cx - p.x, cy - p.y);
+    };
+    const face = fs.sort((a, b) => d(a) - d(b) || a - b)[0]!;
+    lines.forEach((l, j) => {
+      if (l.backFloor !== null && (l.frontSector === sec || l.backSector === sec)) out.set(j, face);
+    });
+  }
+  return out;
+}
+
+/** First line in `set` crossed walking start -> waypoints. */
+function firstCrossed(lines: MapLine[], set: Map<number, number>, start: Point, wps: Point[]): number | null {
+  let a = start;
+  for (const b of wps) {
+    let best: number | null = null, bestT = Infinity;
+    for (const j of set.keys()) {
+      const l = lines[j]!;
+      const d = (b.x - a.x) * (l.y2 - l.y1) - (b.y - a.y) * (l.x2 - l.x1);
+      if (!d) continue;
+      const t = ((l.x1 - a.x) * (l.y2 - l.y1) - (l.y1 - a.y) * (l.x2 - l.x1)) / d;
+      const u = ((l.x1 - a.x) * (b.y - a.y) - (l.y1 - a.y) * (b.x - a.x)) / d;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t < bestT) (bestT = t), (best = j);
+    }
+    if (best !== null) return set.get(best)!;
+    a = b;
+  }
+  return null;
+}
+
 function liveEnemies(engine: Engine): GameObject[] {
   return engine.getObjects(SIGHT_RANGE).filter((o) => o.kind === "enemy" && o.health > 0);
 }
@@ -71,6 +136,9 @@ export function attack(engine: Engine, sink: TicSink, opts: AttackOptions = {}):
     return (id !== undefined ? all.find((o) => o.id === id) : undefined) ?? all.find((o) => o.visible);
   };
   let target = pick(opts.targetId);
+  if (start.weapon === "fist" && target && target.distance > FIST_REACH) {
+    return `attack: out of ammo, only the fist: the ${name(target)} is ${target.distance} units away and punching needs it right next to you. ${ammoAdvice(engine)}`;
+  }
   if (!target) {
     const far = liveEnemies(engine).find((o) => o.visible);
     if (far) return `attack: the nearest enemy (${name(far)}, ${far.distance} units, turn ${far.angle}) is too far for the ${start.weapon.replace(/_/g, " ")} (${range()} units). Close in with doom_goto or doom_act, or take cover.`;
@@ -95,7 +163,7 @@ export function attack(engine: Engine, sink: TicSink, opts: AttackOptions = {}):
       break;
     }
     if (MELEE.has(s.weapon) && !MELEE.has(start.weapon)) {
-      reason = `out of ammo (switched to the ${s.weapon})`;
+      reason = `out of ammo (switched to the ${s.weapon}). ${ammoAdvice(engine)}`;
       break;
     }
     const enemies = liveEnemies(engine);
@@ -113,6 +181,10 @@ export function attack(engine: Engine, sink: TicSink, opts: AttackOptions = {}):
     unseen = cur.visible ? 0 : unseen + 1;
     if (unseen > 10) {
       reason = `lost sight of the ${name(cur)}`;
+      break;
+    }
+    if (s.weapon === "fist" && cur.distance > FIST_REACH + 100) {
+      reason = `out of ammo, only the fist, and the ${name(cur)} keeps its distance (${cur.distance} units). ${ammoAdvice(engine)}`;
       break;
     }
     target = cur;
@@ -159,6 +231,8 @@ export type GotoTarget =
 export interface GotoOptions {
   /** Press "use" on arrival at a door, switch or lift (default true). */
   use?: boolean;
+  /** Internal: how many closed doors this call has already opened on the way. */
+  doorsOpened?: number;
   /** Stop when an enemy that wasn't visible at the start comes into sight (default true). */
   stopOnEnemy?: boolean;
 }
@@ -170,6 +244,8 @@ interface Plan {
   lift?: "walk";
   /** Line to face and press use on at the end. */
   useLine?: { line: MapLine; index: number };
+  /** For doors: a point just past the door, to walk to once it's open. */
+  through?: Point;
 }
 
 function planTarget(engine: Engine, lines: MapLine[], grid: NavGrid, p: PlayerState, target: GotoTarget): Plan | string {
@@ -178,7 +254,30 @@ function planTarget(engine: Engine, lines: MapLine[], grid: NavGrid, p: PlayerSt
       const l = lines[target.id];
       const c = l && classify(l);
       if (!l || !c) return `no door, switch or exit with id ${target.id} (use an id from state.interactives)`;
-      // Aim at the closest point, but keep away from the line's ends (corners and door frames).
+      if (c.how === "use") {
+        // Lines only work from their front side. A door has a face on each side of its sector:
+        // use the one whose front we can walk to (any of them, if the model named the far face).
+        const isDoor = c.kind === "door" || c.kind === "locked_door";
+        const faces = isDoor && l.backSector >= 0
+          ? lines.flatMap((x, i) => (x.backSector === l.backSector && classify(x)?.how === "use" ? [i] : []))
+          : [target.id];
+        const options = faces.map((i) => {
+          const f = lines[i]!;
+          const len = Math.hypot(f.x2 - f.x1, f.y2 - f.y1) || 1;
+          const along = ((p.x - f.x1) * (f.x2 - f.x1) + (p.y - f.y1) * (f.y2 - f.y1)) / (len * len);
+          // Doors are narrow (often 64 units for a 32-unit-wide player): always go through the middle.
+          const t = isDoor ? 0.5 : Math.max(0.2, Math.min(0.8, along));
+          const cx = f.x1 + t * (f.x2 - f.x1), cy = f.y1 + t * (f.y2 - f.y1);
+          const nx = -(f.y2 - f.y1) / len, ny = (f.x2 - f.x1) / len; // towards the back side
+          const point = { x: cx - nx * 36, y: cy - ny * 36 };
+          const r = findPath(grid, { x: p.x, y: p.y }, { point, tolerance: 20 });
+          const rank = r && !r.partial ? r.length : 1e7 + 1e6 * Number(isBlocked(grid, point.x, point.y)) + Math.hypot(point.x - p.x, point.y - p.y);
+          return { i, point, through: { x: cx + nx * 72, y: cy + ny * 72 }, rank };
+        });
+        const best = options.sort((a, b) => a.rank - b.rank || a.i - b.i)[0]!;
+        return { goal: { point: best.point, tolerance: 20 }, label: `the ${c.kind.replace("_", " ")}`, useLine: { line: lines[best.i]!, index: best.i }, ...(isDoor ? { through: best.through } : {}) };
+      }
+      // Walk-over lines (exits, teleporters, lifts). Aim at the closest point, away from the line's ends.
       const len = Math.hypot(l.x2 - l.x1, l.y2 - l.y1) || 1;
       const along = ((p.x - l.x1) * (l.x2 - l.x1) + (p.y - l.y1) * (l.y2 - l.y1)) / (len * len);
       const t = Math.max(0.2, Math.min(0.8, along));
@@ -186,20 +285,20 @@ function planTarget(engine: Engine, lines: MapLine[], grid: NavGrid, p: PlayerSt
       const nx = -(l.y2 - l.y1) / len, ny = (l.x2 - l.x1) / len;
       const what = c.kind.replace("_", " ");
       // Which side do we reach first? Plan to a point on each side and compare.
-      const d = c.how === "use" ? 36 : 40;
+      const d = 40;
       const sides = [1, -1].map((k) => {
         const point = { x: cx + nx * d * k, y: cy + ny * d * k };
         const r = findPath(grid, { x: p.x, y: p.y }, { point, tolerance: 20 });
-        return { point, length: r && !r.partial ? r.length : Infinity };
+        // Neither side reachable yet (a closed door in between): rank by "not inside a wall", then distance.
+        const fallback = 1e6 * Number(isBlocked(grid, point.x, point.y)) + Math.hypot(point.x - p.x, point.y - p.y);
+        return { point, length: r && !r.partial ? r.length : Infinity, fallback };
       });
-      let [near, far] = sides[0]!.length <= sides[1]!.length ? [sides[0]!, sides[1]!] : [sides[1]!, sides[0]!];
+      const firstIsNear = sides[0]!.length !== sides[1]!.length ? sides[0]!.length < sides[1]!.length : sides[0]!.fallback <= sides[1]!.fallback;
+      let [near, far] = firstIsNear ? [sides[0]!, sides[1]!] : [sides[1]!, sides[0]!];
       // A lift's trigger line is tagged with the lift's sector: the platform is the side with that tag.
       // (The normal points to the back side.)
       const liftSide = c.kind === "lift" && l.tag ? (l.backSectorTag === l.tag ? 0 : l.frontSectorTag === l.tag ? 1 : -1) : -1;
-      if (liftSide >= 0 && c.how !== "use") [near, far] = liftSide === 0 ? [sides[1]!, sides[0]!] : [sides[0]!, sides[1]!];
-      if (c.how === "use") {
-        return { goal: { point: near.point, tolerance: 20 }, label: `the ${what}`, useLine: { line: l, index: target.id } };
-      }
+      if (liftSide >= 0) [near, far] = liftSide === 0 ? [sides[1]!, sides[0]!] : [sides[0]!, sides[1]!];
       // Walk-over lines (exits, teleporters, lifts): reach the near side, then cross to the far side.
       return { goal: { point: far.point, tolerance: 20 }, label: `the ${what}`, ...(c.kind === "lift" ? { lift: "walk" as const } : {}) };
     }
@@ -213,7 +312,7 @@ function planTarget(engine: Engine, lines: MapLine[], grid: NavGrid, p: PlayerSt
     case "explore": {
       const from = { x: p.x, y: p.y };
       return {
-        goal: { test: (q: Point) => !target.visited.has(cellKey(q.x, q.y)) && Math.hypot(q.x - from.x, q.y - from.y) >= 256 },
+        goal: { test: (q: Point) => !target.visited.has(cellKey(q.x, q.y)) && Math.hypot(q.x - from.x, q.y - from.y) >= 256 && !hurtsAt(grid, q.x, q.y) },
         label: "unexplored space",
       };
     }
@@ -228,13 +327,47 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   const early = stopReason(start, start);
   if (early) return `goto: can't move: ${early}`;
   const lines = engine.getLines();
-  let grid = buildGrid(lines);
+  let grid = navGrid(engine, lines);
   let heights = heightSignature(lines);
   const planned = planTarget(engine, lines, grid, start, target);
   if (typeof planned === "string") return `goto: ${planned}`;
   let plan: Plan = planned;
   let legs = 0;
   let path = findPath(grid, { x: start.x, y: start.y }, plan.goal);
+  if (!path && target.kind === "explore") {
+    // Everything reachable has been seen: the rest is behind closed doors. Say which ones we can get to.
+    // Doors with unexplored space behind them first, then the nearest.
+    const doors = nearbyInteractives(lines, start, 3000, 40)
+      .filter((i) => (i.kind === "door" || (i.kind === "locked_door" && start.keys.some((k) => k.startsWith(i.key ?? "?")))) && i.state === "closed")
+      .flatMap((i) => {
+        const p = planTarget(engine, lines, grid, start, { kind: "interactive", id: i.id });
+        if (typeof p === "string" || findPath(grid, { x: start.x, y: start.y }, p.goal)?.partial !== false) return [];
+        return [{ ...i, fresh: !!p.through && !target.visited.has(cellKey(p.through.x, p.through.y)) }];
+      })
+      .sort((a, b) => Number(b.fresh) - Number(a.fresh) || a.distance - b.distance)
+      .slice(0, 3);
+    return doors.length
+      ? `goto: everything reachable from here is explored. Closed doors you can reach: ${doors.map((d) => `id ${d.id} (${d.distance} units${d.fresh ? ", unexplored behind it" : ", been through it"})`).join(", ")}. doom_goto(interactive_id=${doors[0]!.id}) opens it and walks through.`
+      : "goto: everything reachable from here is explored, and no closed door is reachable. Look for a lift, a switch, or a key in state.interactives and nearby_items.";
+  }
+  if (!path && target.kind !== "explore" && (opts.doorsOpened ?? 0) < 3) {
+    // No open route: is there one through closed doors we can open? Then open the first and carry on.
+    const doors = openableDoors(lines, start);
+    if (target.kind === "interactive") {
+      const sec = lines[target.id]?.backSector ?? -2;
+      for (const [j, f] of [...doors]) if (f === target.id || lines[f]!.backSector === sec) doors.delete(j); // the target itself isn't "on the way"
+    }
+    if (doors.size) {
+      const via = findPath(navGrid(engine, lines, new Set(doors.keys())), { x: start.x, y: start.y }, plan.goal);
+      const door = via && !via.partial ? firstCrossed(lines, doors, { x: start.x, y: start.y }, via.waypoints) : null;
+      if (door !== null) {
+        const r = goto(engine, sink, { kind: "interactive", id: door }, { ...opts, doorsOpened: (opts.doorsOpened ?? 0) + 1 });
+        if (!/walked through/.test(r) || sink.left() <= 0) return `goto: the way to ${plan.label} is through door ${door}: ${r.replace(/^goto:? ?/, "")}`;
+        const rest = goto(engine, sink, target, { ...opts, doorsOpened: (opts.doorsOpened ?? 0) + 1 });
+        return `goto: opened door ${door} on the way and walked through; then ${rest.replace(/^goto:? ?/, "")}`;
+      }
+    }
+  }
   if (!path) {
     const lifts = nearbyInteractives(lines, start, 1024, 12).filter((i) => i.kind === "lift");
     const hint = lifts.length ? ` Lifts nearby: ${lifts.map((i) => `id ${i.id} (${i.how}, ${i.distance} units)`).join(", ")}; doom_goto a lift rides it.` : "";
@@ -260,7 +393,9 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
     if (hurt && s.attackerAngle !== null) return `took damage (health ${s.health}, attacked from ${describeTurn(s.attackerAngle)})`;
     if (s.health < 25 && hurt) return `health is low (${s.health}), from the floor`;
     if (stopOnEnemy && !onLift) {
-      const e = liveEnemies(engine).find((o) => o.visible && !seen.has(o.id) && o.distance < 1000);
+      // With only the fist there's nothing to do about a distant enemy: only stop for close ones.
+      const reach = s.weapon === "fist" ? FIST_REACH + 100 : 1000;
+      const e = liveEnemies(engine).find((o) => o.visible && !seen.has(o.id) && o.distance < reach);
       if (e) return `spotted a ${name(e)} (id ${e.id}, ${e.distance} units, turn ${e.angle})`;
     }
     return null;
@@ -279,7 +414,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
       sincePlan = 0;
       const now = engine.getLines();
       const sig = heightSignature(now);
-      if (sig !== heights) (grid = buildGrid(now)), (heights = sig);
+      if (sig !== heights) (grid = navGrid(engine, now)), (heights = sig);
       const again = findPath(grid, { x: s.x, y: s.y }, plan.goal);
       if (again) (path = again), (wps = again.waypoints), (wi = 0), (noRoute = 0);
       else if (++noRoute > 35) {
@@ -290,7 +425,8 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
         continue;
       }
     }
-    while (wi < wps.length - 1 && Math.hypot(wps[wi]!.x - s.x, wps[wi]!.y - s.y) < 32) wi++;
+    // Skip a waypoint we're close to, but only if heading straight for the next one is clear.
+    while (wi < wps.length - 1 && Math.hypot(wps[wi]!.x - s.x, wps[wi]!.y - s.y) < 32 && clearLine(grid, { x: s.x, y: s.y }, wps[wi + 1]!)) wi++;
     const wp = wps[wi] ?? { x: s.x, y: s.y }; // empty route: already there
     const final = wi === wps.length - 1;
     const d = Math.hypot(wp.x - s.x, wp.y - s.y);
@@ -322,8 +458,10 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
           break;
         }
         // First try "use" (an unmarked door) and a sidestep right, then a sidestep left.
+        // Never press use next to an open door: that closes it.
         const side = unstuck === 0 ? 40 : -40;
-        if (sink.left() > 0) sink.apply({ f: 0, s: 0, t: 0, b: unstuck === 0 ? BT_USE : 0, n: 1 });
+        const openDoorNear = nearbyInteractives(engine.getLines(), now, 128, 4).some((i) => (i.kind === "door" || i.kind === "locked_door") && i.state === "open");
+        if (sink.left() > 0) sink.apply({ f: 0, s: 0, t: 0, b: unstuck === 0 && !openDoorNear ? BT_USE : 0, n: 1 });
         for (let i = 0; i < 8 && sink.left() > 0; i++) sink.apply({ f: -WALK, s: side, t: 0, b: 0, n: 1 });
         unstuck++;
         sincePlan = REPLAN_EVERY; // re-plan from the new spot
@@ -344,18 +482,31 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   if (plan.lift === "walk" && !path.partial) return `goto: ${where}; ${rideLift(engine, sink, interrupt)}`;
   if (!plan.useLine || !use || path.partial) return `goto: ${where}`;
 
-  // Face the line and press use.
+  // Face the line (a door's middle: its ends are the frame) and get within use range (64 units).
+  // Momentum carries the player on after running in, so steer while sliding instead of stopping first.
   const l = plan.useLine.line;
-  for (let i = 0; i < 12 && sink.left() > 0; i++) {
+  const isDoor = classify(l)?.kind === "door" || classify(l)?.kind === "locked_door";
+  for (let i = 0; i < 45 && sink.left() > 0; i++) {
     const now = engine.getState();
-    const [cx, cy] = closestPoint(l, now.x, now.y);
+    const [cx, cy] = isDoor ? [(l.x1 + l.x2) / 2, (l.y1 + l.y2) / 2] : closestPoint(l, now.x, now.y);
+    const dc = Math.hypot(cx - now.x, cy - now.y);
     const diff = norm180((Math.atan2(cy - now.y, cx - now.x) * 180) / Math.PI - now.angle);
-    if (Math.abs(diff) < 3) break;
-    sink.apply({ f: 0, s: 0, t: clampTurn(diff * FRAC_DEG), b: 0, n: 1 });
+    if (dc < 56 && Math.abs(diff) < 4) break;
+    const t = clampTurn(diff * FRAC_DEG);
+    const f = dc > 44 && Math.abs(diff - t / FRAC_DEG) < 30 ? (dc > 80 ? WALK : 12) : 0;
+    sink.apply({ f, s: 0, t, b: 0, n: 1 });
   }
   if (sink.left() <= 0) return `goto: ${where}, but ran out of time before pressing use`;
-  sink.apply({ f: 0, s: 0, t: 0, b: BT_USE, n: 1 });
   const c = classify(l)!;
+  // A door that's already opening would close again if used: then just wait. (A closing one reopens.)
+  let opening = false;
+  if (isDoor && sink.left() > 1) {
+    const before = engine.getLines()[plan.useLine.index]!.backCeil ?? 0;
+    sink.apply({ f: 0, s: 0, t: 0, b: 0, n: 1 });
+    opening = (engine.getLines()[plan.useLine.index]!.backCeil ?? 0) > before;
+  }
+  const alreadyOpen = isDoor && doorState(engine.getLines()[plan.useLine.index]!) === "open"; // using it would close it
+  if (!opening && !alreadyOpen) sink.apply({ f: 0, s: 0, t: 0, b: BT_USE, n: 1 });
   if (c.kind === "lift") return `goto: ${where} and pressed use; ${boardLift(engine, sink, plan.useLine.index, interrupt)}`;
   if (c.kind === "door" || c.kind === "locked_door") {
     // Wait for the door to open (it takes about a second).
@@ -363,7 +514,13 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
       const now = engine.getState();
       const stop = interrupt(now);
       if (stop) return `goto: ${where} and pressed use; then stopped: ${stop}`;
-      if (doorState(engine.getLines()[plan.useLine.index]!) === "open") return `goto: ${where} and opened it; walk through now`;
+      if (doorState(engine.getLines()[plan.useLine.index]!) === "open") {
+        // Walk through while it's open (doors close again after about 4 seconds).
+        if (!plan.through || sink.left() <= 0) return `goto: ${where} and opened it; walk through now`;
+        const r = goto(engine, sink, { kind: "position", x: plan.through.x, y: plan.through.y }, { use: false, stopOnEnemy });
+        if (r.startsWith("goto: reached")) return `goto: ${where}, opened it and walked through`;
+        return `goto: ${where} and opened it; walking through: ${r.replace(/^goto (\([^)]*\))?:? ?/, "")}`;
+      }
       sink.apply({ f: 0, s: 0, t: 0, b: 0, n: 1 });
     }
     return c.kind === "locked_door" && !engine.getState().keys.some((k) => k.startsWith(c.key ?? "?"))

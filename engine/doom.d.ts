@@ -18,6 +18,9 @@ export interface DoomModule {
   _doom_get_lines(): number;
   _doom_lines_ptr(): number;
   _doom_line_stride(): number;
+  _doom_get_obstacles(): number;
+  _doom_obstacles_ptr(): number;
+  _doom_sector_grid(x0: number, y0: number, w: number, h: number, cell: number): number;
 }
 export interface DoomModuleOptions {
   print?: (s: string) => void;

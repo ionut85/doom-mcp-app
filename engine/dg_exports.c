@@ -295,3 +295,56 @@ int32_t *doom_lines_ptr(void) { return line_buf; }
 
 EMSCRIPTEN_KEEPALIVE
 int doom_line_stride(void) { return L_STRIDE; }
+
+// ---------------------------------------------------------------------------
+// route planning helpers (read-only)
+
+// Solid things the player can't walk through but that aren't monsters:
+// pillars, lamps, trees, barrels. Fills x, y, radius per thing; returns count.
+#define MAX_OBST 1024
+static int32_t obst[MAX_OBST * 3];
+
+EMSCRIPTEN_KEEPALIVE
+int doom_get_obstacles(void) {
+  player_t *p = &players[consoleplayer];
+  int n = 0;
+  if (!p->mo || gamestate != GS_LEVEL) return 0;
+  for (thinker_t *th = thinkercap.next; th != &thinkercap && n < MAX_OBST; th = th->next) {
+    if (th->function.acp1 != (actionf_p1)P_MobjThinker) continue;
+    mobj_t *mo = (mobj_t *)th;
+    if (mo == p->mo || mo->player) continue;
+    if (!(mo->flags & MF_SOLID) || (mo->flags & MF_COUNTKILL)) continue;
+    obst[n * 3] = mo->x >> FRACBITS;
+    obst[n * 3 + 1] = mo->y >> FRACBITS;
+    obst[n * 3 + 2] = mo->radius >> FRACBITS;
+    n++;
+  }
+  return n;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int32_t *doom_obstacles_ptr(void) { return obst; }
+
+// Sector index at the centre of each cell of a w x h grid of `cell`-unit
+// cells starting at (x0, y0), row-major. Returns the buffer (w*h int32s).
+static int32_t *sgrid = NULL;
+static int sgrid_cap = 0;
+
+EMSCRIPTEN_KEEPALIVE
+int32_t *doom_sector_grid(int x0, int y0, int w, int h, int cell) {
+  if (gamestate != GS_LEVEL || w <= 0 || h <= 0) return NULL;
+  if (w * h > sgrid_cap) {
+    free(sgrid);
+    sgrid_cap = w * h;
+    sgrid = malloc(sizeof(int32_t) * sgrid_cap);
+  }
+  for (int cy = 0; cy < h; cy++) {
+    for (int cx = 0; cx < w; cx++) {
+      fixed_t x = (x0 + cx * cell + cell / 2) << FRACBITS;
+      fixed_t y = (y0 + cy * cell + cell / 2) << FRACBITS;
+      subsector_t *ss = R_PointInSubsector(x, y);
+      sgrid[cy * w + cx] = ss && ss->sector ? (int32_t)(ss->sector - sectors) : -1;
+    }
+  }
+  return sgrid;
+}

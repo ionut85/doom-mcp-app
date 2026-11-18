@@ -310,7 +310,14 @@ claude-plays-doom/
     - The engine's line export gained each side's sector index, sector tag and sector special (append-only). The lift platform is the side whose sector tag matches the trigger line's tag.
     - Floor damage (nukage, no attacker) no longer interrupts a walk.
     - In the scripted loop this made ~2.7 s of game time per call.
-  - Limits: routes can't pass closed doors; solid decorations aren't in the grid (handled by sidestepping when stuck).
+  - Fixes found by a free bot run (`pnpm eval --policy assisted`, before spending on another eval):
+    - Two read-only engine exports (append-only): solid things (`doom_get_obstacles`) and the sector at each grid cell (`doom_sector_grid`, via `R_PointInSubsector`). Solid things are obstacles on the grid; damaging floors cost 8× and `explore` never aims for them.
+    - Routes go through closed doors the player can open: when there's no open route, plan again with those doors passable, open the first one on the way, walk through, carry on.
+    - Doors: aim at the middle (they're as narrow as 64 units), use the face whose front the player can reach (lines only work from the front), steer into use range while still sliding, never press use on an open or opening door (that closes it), and walk through once it's open.
+    - Ledges: a cell centre exactly on a 45° ledge counted as neither side, so routes climbed it; it now counts as the high side. The foot of a ledge is a wall from below: within 18 units only reachable by dropping, within 30 units it costs 6×.
+    - Waypoints are skipped only when the straight line to the next one is clear (it cut corners into solid things).
+    - Fist only: `doom_attack` won't chase beyond ~200 units, and both tools say where the nearest ammo is.
+    - `explore` with nothing reachable left lists the closed doors you can reach, unexplored ones first.
   - `pnpm eval --no-assist` hides them, so results stay comparable with the earlier evals.
 - **Docs.** `docs/DEMO.md` is the run-sheet (prompts for three modes, checklist, fallbacks, talking points). `docs/voice.md` covers voice. The README diagram is updated.
 

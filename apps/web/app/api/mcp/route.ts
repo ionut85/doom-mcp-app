@@ -34,7 +34,8 @@ Moving and exploring (state/both perception includes a map and an "interactives"
 - Use longer moves (21-35 tics with run) through cleared areas, shorter ones (7-14 tics) near enemies.
 
 Assisted moves (smoother to watch, fewer calls):
-- doom_goto walks a planned route for a few seconds: to a door or switch (interactive_id, it presses use for you), an item (item_id), a map position (x, y), or explore=true for unvisited space. Prefer it over step-by-step walking.
+- doom_goto walks a planned route for a few seconds: to a door or switch (interactive_id: it opens doors and walks through), an item (item_id), a map position (x, y), or explore=true for unvisited space. Routes open closed doors on the way and avoid damaging floors. Prefer it over step-by-step walking.
+- Out of ammo (only the fist)? Don't fight at range: doom_goto(item_id) to ammo or a weapon first.
 - doom_attack aims and fires at enemies in range until they're dead or something changes. Prefer it for routine fights; use doom_turn + doom_act fire for precise shots, and doom_act for strafing, backing off and switching weapons.
 - Both return a "result" line that says why they stopped (enemy spotted, took damage, blocked, time's up): read it and decide the next move.
 - When dead, doom_act ["use"] restarts the level.`;
@@ -131,7 +132,7 @@ const handler = createMcpHandler(
       "doom_attack",
       {
         title: "DOOM: attack (assisted)",
-        description: `Assisted fighting: turns to an enemy, fires whenever it's in the crosshair, and moves on to the next visible enemy after a kill, for up to max_seconds (default 3, max ${LIMITS.maxAutoTics / 35}). With fists or the chainsaw it walks in to hit. Stops early when no enemy is left in sight, you lose ${25}+ health, you run out of ammo, the target gets out of range, or you die. Only attacks enemies within the current weapon's useful range (pistol ~900 units, shotgun ~700). Returns the observation plus a "result" line saying what happened and why it stopped. You still decide when to fight, retreat, switch weapons or heal.`,
+        description: `Assisted fighting: turns to an enemy, fires whenever it's in the crosshair, and moves on to the next visible enemy after a kill, for up to max_seconds (default 3, max ${LIMITS.maxAutoTics / 35}). With the chainsaw it walks in to hit; with only the fist it won't chase anything farther than ~200 units and says where the nearest ammo is. Stops early when no enemy is left in sight, you lose ${25}+ health, you run out of ammo, the target gets out of range, or you die. Only attacks enemies within the current weapon's useful range (pistol ~900 units, shotgun ~700). Returns the observation plus a "result" line saying what happened and why it stopped. You still decide when to fight, retreat, switch weapons or heal.`,
         inputSchema: z.object({
           session_id: sessionId,
           target_id: z.number().int().optional().describe("id from state.enemies to attack first; default: the nearest visible enemy"),
@@ -147,11 +148,11 @@ const handler = createMcpHandler(
       {
         title: "DOOM: go to (assisted)",
         description: `Assisted movement: plans a route around walls and walks it at running speed, for up to max_seconds (default 4, max ${LIMITS.maxAutoTics / 35}). Give exactly one target:
-- interactive_id: a door, switch, lift or exit from state.interactives. At a door or switch it faces it and presses use (and waits for a door to open), unless use=false. At a lift it rides it (calls it if needed, steps on, waits until it stops).
+- interactive_id: a door, switch, lift or exit from state.interactives. At a switch it faces it and presses use; a door it opens and walks through (unless use=false). At a lift it rides it (calls it if needed, steps on, waits until it stops).
 - item_id: an item from state.nearby_items, to pick it up.
 - x and y: a map position (state.position is yours; the map is 64 units per character, north up, so 3 characters right and 2 up of @ is x+192, y+128).
-- explore: true, to head for the nearest area you haven't visited.
-Routes drop down ledges but never climb a step over 24 units, and can't pass closed doors: open the door first, or doom_goto a lift to change level. It stops early when a new enemy comes into sight (unless stop_on_enemy=false), when you're attacked, or when the way is blocked. Returns the observation plus a "result" line saying what happened and why it stopped.`,
+- explore: true, to head for the nearest area you haven't visited. When everything reachable is explored it lists the closed doors you can reach, unexplored ones first.
+Routes go around solid things and damaging floors (nukage), open closed doors on the way (locked ones only with the key), drop down ledges but never climb a step over 24 units: doom_goto a lift to go up. It stops early when a new enemy comes into sight (unless stop_on_enemy=false), when you're attacked, or when the way is blocked. Returns the observation plus a "result" line saying what happened and why it stopped.`,
         inputSchema: z.object({
           session_id: sessionId,
           interactive_id: z.number().int().optional(),

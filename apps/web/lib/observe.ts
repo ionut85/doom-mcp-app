@@ -215,6 +215,8 @@ export function observe(engine: Engine, prev: PlayerState | null, perception: Pe
   };
   if (st.status === "dead") st.hint = "You are dead. doom_act with actions ['use'] restarts the level.";
   else if (st.status === "level_complete") st.hint = "Level complete! doom_act with ['use'] a few times to continue to the next map.";
+  else if (s.weapon === "fist" && enemies.length)
+    st.hint = "Out of ammo: only the fist, which needs the enemy right next to you. Pick up ammo or a weapon (nearby_items: ammo_clip, shells, shotgun…) with doom_goto(item_id=…), or get out of sight.";
   else if (enemies.some((e) => e.in_crosshair)) st.hint = "An enemy is in your crosshair: fire, or doom_attack.";
   else if (enemies.length) st.hint = `Nearest enemy is ${describeAngle(enemies[0]!.turn)}: doom_attack, or doom_turn(${enemies[0]!.turn}) then fire.`;
   else if (interactives.some((i) => i.in_use_range && i.kind !== "locked_door" && i.state !== "open"))

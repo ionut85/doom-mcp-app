@@ -395,6 +395,23 @@ export class Engine {
     return out;
   }
 
+  /** Solid things that aren't monsters (pillars, lamps, trees, barrels): obstacles for route planning. */
+  getObstacles(): { x: number; y: number; radius: number }[] {
+    const n = this.m._doom_get_obstacles();
+    const p = this.m._doom_obstacles_ptr() >> 2;
+    const raw = this.m.HEAP32.subarray(p, p + n * 3);
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) out[i] = { x: raw[i * 3]!, y: raw[i * 3 + 1]!, radius: raw[i * 3 + 2]! };
+    return out;
+  }
+
+  /** Sector index (as in MapLine.frontSector) at the centre of each cell of a grid, row-major; -1 outside the map. */
+  sectorGrid(x0: number, y0: number, w: number, h: number, cell: number): Int32Array {
+    const ptr = this.m._doom_sector_grid(x0, y0, w, h, cell);
+    if (!ptr) return new Int32Array(w * h).fill(-1);
+    return this.m.HEAP32.slice(ptr >> 2, (ptr >> 2) + w * h);
+  }
+
   /** SHA-256 of the raw state vector (positions at full fixed-point precision). */
   async stateHash(): Promise<string> {
     const r = this.rawState();

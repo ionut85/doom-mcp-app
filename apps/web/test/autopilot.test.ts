@@ -9,8 +9,8 @@ describe("assisted moves", () => {
     const id = g.session.id;
     const door = g.obs.state.interactives.find((i) => i.how === "use");
     expect(door, JSON.stringify(g.obs.state.interactives)).toBeTruthy();
-    let r = await autoGoto(id, { interactive_id: door!.id }, { maxSeconds: 6, caption: "to the door" });
-    for (let i = 0; i < 3 && /time's up/.test(r.obs.state.result ?? ""); i++) r = await autoGoto(id, { interactive_id: door!.id }, { maxSeconds: 6 });
+    let r = await autoGoto(id, { interactive_id: door!.id }, { maxSeconds: 6, stopOnEnemy: false, caption: "to the door" });
+    for (let i = 0; i < 3 && /time's up/.test(r.obs.state.result ?? ""); i++) r = await autoGoto(id, { interactive_id: door!.id }, { maxSeconds: 6, stopOnEnemy: false });
     console.log(r.obs.state.result, r.obs.state.position, r.session.steps.length, "steps");
     expect(r.obs.state.result).toMatch(/reached the (lift|door|switch)/);
     const warm = await observeSession(id);

@@ -71,7 +71,7 @@ async function rpc<T = any>(method: string, params: unknown): Promise<T> {
       headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" },
       body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
     });
-    if (res.status === 429 && attempt < 5) {
+    if (res.status === 429 && attempt < 10) { // the server allows 300 calls a minute per IP
       await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
       continue;
     }
@@ -194,7 +194,10 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
     let obs = started;
     const log: string[] = [];
     const failed = new Map<number, number>(); // interactive id -> action index when it failed
-    const used = new Set<number>(); // switches / lifts already used
+    const used = new Set<number>(); // switches / lifts already used, doors walked through
+    const skipItems = new Set<number>(); // items tried once
+    let tooFar = false; // last doom_attack said the enemy is out of range: move instead
+    let suggested: number | null = null; // a door that doom_goto(explore) said is reachable
     while (actions < MAX_ACTIONS && !finish(scorer)) {
       const st = JSON.parse(obs.content.find((c) => c.type === "text")!.text.split("\n").slice(1).join("\n"));
       let name: string, args: Record<string, unknown>, target = "";
@@ -204,19 +207,39 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
         st.interactives?.find((i: any) => i.kind === "door" && i.state === "closed" && ok(i)) ??
         st.interactives?.find((i: any) => i.kind === "locked_door" && i.state === "closed" && st.keys.some((k: string) => k.startsWith(i.key ?? "?")) && ok(i)) ??
         st.interactives?.find((i: any) => (i.kind === "switch" || i.kind === "lift") && ok(i));
+      const want = (re: RegExp) => st.nearby_items?.find((i: any) => re.test(i.type) && !skipItems.has(i.id));
+      const item =
+        (st.weapon === "fist" && want(/ammo_clip|box_of_bullets|shotgun|chaingun|backpack|chainsaw/)) ||
+        (st.health < 50 && want(/stimpack|medikit|health/)) ||
+        want(/shotgun|chaingun|backpack|armor|box_of/);
       if (st.status === "dead") (name = "doom_act"), (args = { session_id: sid, steps: [{ actions: ["use"], tics: 2 }, { actions: [], tics: 10 }] });
-      else if (st.enemies?.some((e: any) => e.distance <= 900)) (name = "doom_attack"), (args = { session_id: sid });
+      else if (st.weapon === "fist" && item) (name = "doom_goto"), (args = { session_id: sid, item_id: item.id, max_seconds: 6 }), (target = item.type);
+      else if (!tooFar && st.enemies?.some((e: any) => e.distance <= (st.weapon === "fist" ? 200 : 900))) (name = "doom_attack"), (args = { session_id: sid });
+      else if (item) (name = "doom_goto"), (args = { session_id: sid, item_id: item.id, max_seconds: 6 }), (target = item.type);
+      else if (suggested !== null && !(pick && /exit/.test(pick.kind))) (name = "doom_goto"), (args = { session_id: sid, interactive_id: suggested, max_seconds: 6 }), (target = `suggested door ${suggested}`);
       else if (pick) (name = "doom_goto"), (args = { session_id: sid, interactive_id: pick.id, max_seconds: 6 }), (target = `${pick.kind} ${pick.id}`);
       else (name = "doom_goto"), (args = { session_id: sid, explore: true, max_seconds: 6 }), (target = "explore");
       obs = await callTool(name, args);
       toolCounts[name] = (toolCounts[name] ?? 0) + 1;
       actions++;
       scorer.update(await getStats(sid));
-      const r = JSON.parse(obs.content.find((c) => c.type === "text")!.text.split("\n").slice(1).join("\n"));
+      const text = obs.content.find((c) => c.type === "text")?.text ?? "";
+      if (obs.isError) {
+        errors++;
+        log.push(`${String(actions).padStart(3)} ${name.replace("doom_", "")} ${target} -> ERROR ${text}`);
+        if (process.env.EVAL_VERBOSE) console.log(log[log.length - 1]);
+        obs = await callTool("doom_observe", { session_id: sid });
+        if ("item_id" in args) skipItems.add(args.item_id as number);
+        continue;
+      }
+      const r = JSON.parse(text.split("\n").slice(1).join("\n"));
       const res: string = r.result ?? "";
-      if (pick && name === "doom_goto") {
-        if (/no route|didn't open|got as close|blocked|time's up|ran out/.test(res)) failed.set(pick.id, actions);
-        else if (pick.kind !== "door" && /reached|pressed|rode/.test(res)) used.add(pick.id);
+      tooFar = name === "doom_attack" && /too far/.test(res);
+      suggested = /Closed doors you can reach: id (\d+)/.exec(res) ? Number(/Closed doors you can reach: id (\d+)/.exec(res)![1]) : null;
+      if ("item_id" in args) skipItems.add(args.item_id as number);
+      else if (pick && name === "doom_goto") {
+        if (/no route|didn't open|got as close|blocked/.test(res)) failed.set(pick.id, actions); // "time's up": keep going next call
+        else if (pick.kind !== "door" ? /reached|pressed|rode/.test(res) : /walked through|opened it/.test(res)) used.add(pick.id);
       }
       const line = `${String(actions).padStart(3)} ${name.replace("doom_", "")} ${target} -> ${res} | hp ${r.health} kills ${r.kills} at ${r.position.x},${r.position.y} t=${r.time_s}s`;
       log.push(line);

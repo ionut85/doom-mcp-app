@@ -79,6 +79,17 @@ Before the next paid round: a no-AI bot that only calls `doom_goto` and `doom_at
 - **Doors need two calls.** "opened it; walk through now", then another call to go through. Routing through closed, unlocked doors would save a call per door.
 - **The ledge and lift work held up.** Every lift ride worked, and no route failed because of a drop.
 
+### After the fixes (same bot, 200 calls, $0)
+
+The bot also improved along the way (it picks up ammo, health and weapons, follows the "closed doors you can reach" hint, and keeps a target after "time's up"), so both versions were rerun with the final bot: old tools against production, new tools against a local server.
+
+| Skill | Old tools | New tools |
+|---|---|---|
+| 2 | 2 kills, no exit in 200 calls; 81 "blocked" stops | 5 kills, **exit in 21 calls** |
+| 3 | 10 kills, no exit in 200 calls; 113 "blocked" stops | 11 kills, **exit in 55 calls** |
+
+The old tools' "blocked" stops were mostly routes that climbed a ledge on a 45° line and routes squeezed between a solid thing and the foot of a ledge. One run each, and the game is chaotic: small changes move a run onto a different path, so take these as "the tools no longer trap the bot", not as precise rates.
+
 ## Spend
 
 - About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
