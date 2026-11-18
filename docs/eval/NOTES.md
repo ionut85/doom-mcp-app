@@ -69,8 +69,19 @@ Same setup as the v2 `both` / skill 3 cell (Opus 5.5, medium effort, 50 actions)
 - **The long run didn't finish.** With up to 200 actions it hit the $6 cost cap after 171 actions: 18 kills, no deaths, 76 cells explored, 235 s of game time, but no exit. The transcript shows it lost most of its actions around lifts and ledges. `doom_goto` can't plan through a lift or a drop off a ledge (it treats any height step over 24 units as a wall in both directions), so Claude worked them out step by step. One-way drops and lift riding are the next things to add to the route planner.
 - **Cost per action** is higher (about $0.02 vs $0.016 at 50 actions), because results carry more game per call. The long run reached $0.035 per action as its history grew.
 
+## Free bot run on the assisted tools (`--policy assisted`, 2026-11-18)
+
+Before the next paid round: a no-AI bot that only calls `doom_goto` and `doom_attack` (exit, then closed doors, switches and lifts, else explore; fight anything within 900 units). It played 200 calls against production at skill 3: 22 kills over 3 lives, 2 deaths, 55 cells, no exit, $0. The call log is in `eval-out/<run>/transcript.json`. The bot is cruder than Claude (it never picks up items and keeps reopening doors), but it shows where the tools themselves waste calls:
+
+- **Fists against imps: 75 calls.** Out of bullets, `doom_attack` walked in with the fist and stopped with "lost sight of the imp", and the next `doom_goto` stopped on the same imp. Neither result said the real problem: no ammo.
+- **Nukage drains health: one death.** `explore` routes straight across damaging floors. It stops at "health is low, from the floor", then the next call walks back in. The sector specials are now exported, so the planner could give those cells a cost.
+- **Back and forth "blocked: something is in the way": 9 calls**, between (690, 210) and (880, 400) near door 599. Probably a solid object the route map doesn't know about.
+- **Doors need two calls.** "opened it; walk through now", then another call to go through. Routing through closed, unlocked doors would save a call per door.
+- **The ledge and lift work held up.** Every lift ride worked, and no route failed because of a drop.
+
 ## Spend
 
 - About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
+- Eval harness: parallel runs now share one API client, so they no longer race to refresh the login (the lost third run above).
 - Assisted runs: $8.09 ($2.06 for the two 50-action runs, $6.03 for the long run). Total so far: about $38.
 - Run cost scales faster than linearly with the action budget, since every request re-reads the growing history.

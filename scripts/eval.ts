@@ -3,6 +3,7 @@
 //
 //   pnpm eval --perception all --skill 2,3 --runs 5           # full matrix, Claude
 //   pnpm eval --policy scripted --perception state --runs 5    # no-AI baseline
+//   pnpm eval --policy assisted --perception state --actions 200 # no-AI bot on doom_goto / doom_attack
 //   pnpm eval --dry-run                                        # plumbing check, no API calls
 //   pnpm eval --no-assist ...                                  # without doom_attack / doom_goto
 //
@@ -21,7 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const { values: opt } = parseArgs({
   options: {
-    policy: { type: "string", default: "claude" }, // claude | scripted
+    policy: { type: "string", default: "claude" }, // claude | scripted | assisted
     model: { type: "string", default: "claude-opus-5-5" },
     effort: { type: "string", default: "medium" }, // low | medium | high | xhigh | max
     perception: { type: "string", default: "both" }, // vision | state | both | all
@@ -51,6 +52,13 @@ const PRICES: Record<string, [number, number, number, number]> = {
   "claude-sonnet-5-5": [2, 10, 0.1, 2.5],
   "claude-haiku-5-5": [0.1, 0.5, 0.01, 0.125],
 };
+
+// One client for all runs: its token cache refreshes a user-OAuth login once and
+// shares the result. A client per run made parallel runs race to spend the same
+// refresh token, and the loser failed with invalid_grant.
+const client = new Anthropic();
+let authRetries = 0;
+const isAuthRace = (e: unknown) => e instanceof Error && /invalid_grant|refresh failed/i.test(e.message);
 
 // ---------------------------------------------------------------------------
 // MCP over Streamable HTTP (stateless JSON-RPC POSTs)
@@ -179,8 +187,49 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
     return summarize();
   }
 
+  // --- Assisted scripted policy (no AI): doom_goto / doom_attack only -------
+  // Free stand-in for an assisted Claude run: shows where the route planner and
+  // the attack controller still get stuck. Each call's result goes to transcript.json.
+  if (spec.policy === "assisted") {
+    let obs = started;
+    const log: string[] = [];
+    const failed = new Map<number, number>(); // interactive id -> action index when it failed
+    const used = new Set<number>(); // switches / lifts already used
+    while (actions < MAX_ACTIONS && !finish(scorer)) {
+      const st = JSON.parse(obs.content.find((c) => c.type === "text")!.text.split("\n").slice(1).join("\n"));
+      let name: string, args: Record<string, unknown>, target = "";
+      const ok = (i: any) => (failed.get(i.id) ?? -99) < actions - 15 && !used.has(i.id);
+      const pick =
+        st.interactives?.find((i: any) => (i.kind === "exit_switch" || i.kind === "exit") && ok(i)) ??
+        st.interactives?.find((i: any) => i.kind === "door" && i.state === "closed" && ok(i)) ??
+        st.interactives?.find((i: any) => i.kind === "locked_door" && i.state === "closed" && st.keys.some((k: string) => k.startsWith(i.key ?? "?")) && ok(i)) ??
+        st.interactives?.find((i: any) => (i.kind === "switch" || i.kind === "lift") && ok(i));
+      if (st.status === "dead") (name = "doom_act"), (args = { session_id: sid, steps: [{ actions: ["use"], tics: 2 }, { actions: [], tics: 10 }] });
+      else if (st.enemies?.some((e: any) => e.distance <= 900)) (name = "doom_attack"), (args = { session_id: sid });
+      else if (pick) (name = "doom_goto"), (args = { session_id: sid, interactive_id: pick.id, max_seconds: 6 }), (target = `${pick.kind} ${pick.id}`);
+      else (name = "doom_goto"), (args = { session_id: sid, explore: true, max_seconds: 6 }), (target = "explore");
+      obs = await callTool(name, args);
+      toolCounts[name] = (toolCounts[name] ?? 0) + 1;
+      actions++;
+      scorer.update(await getStats(sid));
+      const r = JSON.parse(obs.content.find((c) => c.type === "text")!.text.split("\n").slice(1).join("\n"));
+      const res: string = r.result ?? "";
+      if (pick && name === "doom_goto") {
+        if (/no route|didn't open|got as close|blocked|time's up|ran out/.test(res)) failed.set(pick.id, actions);
+        else if (pick.kind !== "door" && /reached|pressed|rode/.test(res)) used.add(pick.id);
+      }
+      const line = `${String(actions).padStart(3)} ${name.replace("doom_", "")} ${target} -> ${res} | hp ${r.health} kills ${r.kills} at ${r.position.x},${r.position.y} t=${r.time_s}s`;
+      log.push(line);
+      if (process.env.EVAL_VERBOSE) console.log(line);
+    }
+    if (finish(scorer)) stop = "exit";
+    fs.mkdirSync(path.join(OUT, runId), { recursive: true });
+    const s = summarize();
+    fs.writeFileSync(path.join(OUT, runId, "transcript.json"), JSON.stringify(log, null, 1));
+    return s;
+  }
+
   // --- Claude policy -------------------------------------------------------
-  const client = new Anthropic();
   const transcript: unknown[] = [];
   const firstText = started.content.find((c) => c.type === "text")?.text ?? "";
   const messages: Anthropic.Beta.BetaMessageParam[] = [
@@ -218,6 +267,12 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
     } catch (e) {
       if (e instanceof Anthropic.RateLimitError || e instanceof Anthropic.InternalServerError || e instanceof Anthropic.APIConnectionError) {
         await new Promise((r) => setTimeout(r, 15_000));
+        continue;
+      }
+      // Another process (or an older harness) may have rotated the refresh token:
+      // the credentials file is re-read on each attempt, so wait and retry.
+      if (isAuthRace(e) && authRetries++ < 3) {
+        await new Promise((r) => setTimeout(r, 5_000));
         continue;
       }
       throw e;
