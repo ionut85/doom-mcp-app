@@ -48,7 +48,11 @@ Prompt (the most fluid run):
 
 Prompt to start:
 
-> Start a game of DOOM. Don't play on your own: wait for my instructions, then carry them out with a few moves each and tell me what you see.
+> Start a game of DOOM with perception "state". Don't play on your own: wait for my instructions, carry out each one with a single tool call, then tell me in one sentence what happened.
+
+- **Why this prompt:** each instruction becomes one assisted move ("go through the door" is one `doom_goto`), so you wait for one round of thinking instead of several. `state` means no screenshot for the model to read, which makes each call faster. The audience still sees the game in the viewer. The server instructions ask for the same, so it mostly happens without the prompt too.
+- **Time freeze is visible:** while the model works out what you said, the badge reads **⏸ frozen until Claude moves** (or ChatGPT). Nothing moves on the server either. Point this out: you can take your time giving orders.
+- **The viewer jumps to the live game** when you click into the **Tell Claude** box or press 🎤. If moves were still playing back, your order applies to what you now see.
 
 Then give commands, either typed or dictated:
 - in the chat box;
@@ -63,7 +67,9 @@ Commands that work well:
 - "Explore this area and deal with anything you meet." (`doom_autoplay` with goal `explore`, which never presses the exit.)
 - "Find the exit switch." (`doom_autoplay` with goal `exit`.)
 
-Short, concrete commands work best. Each becomes one or a few tool calls. Voice details and what's verified are in `docs/voice.md`.
+Short, concrete commands work best. Each becomes one tool call. Voice details and what's verified are in `docs/voice.md`.
+
+**Live voice (ChatGPT voice mode).** ChatGPT's voice conversation calls the DOOM tools (check 10 below). Start with the directed prompt above, spoken. Claude's voice mode can't call connector tools yet; in Claude, use dictation or the viewer's 🎤.
 
 ## 3. Human: play it yourself
 

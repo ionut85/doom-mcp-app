@@ -48,6 +48,15 @@ export class SmoothPlayer {
     this.appliedSteps += steps.length;
   }
 
+  /** Plays everything queued at once, so the screen shows the game exactly as it is on the server now. */
+  catchUp() {
+    if (!this.queue.length) return;
+    while (this.queue.length) this.tic();
+    this.acc = 0;
+    this.draw();
+    this.onState(this.engine.getState(), 0);
+  }
+
   behind(): number {
     return this.queue.reduce((a, s) => a + s.n, 0);
   }

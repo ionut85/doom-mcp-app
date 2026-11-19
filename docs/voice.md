@@ -50,8 +50,23 @@ Claude's voice conversation mode may or may not call connector tools and render 
 
 **Result, 2026-11-13, Claude Desktop:** doesn't work. In voice mode Claude says it can't reach the game controls, and no DOOM tool calls reach our server. The server logs show nothing but the app's background listen request. The same connector works in a typed chat in the same app. This is on Claude's side, and our server can't change it: there are public reports of custom connector tools failing in voice mode with "tool is not registered" while text mode works. Retest when Claude ships voice-mode changes. Until then, use dictation (section 1) or the viewer's 🎤 (section 2).
 
+## 4. ChatGPT voice mode (works, was slow)
+
+**Result, 2026-11-18:** ChatGPT's voice conversation calls the DOOM tools and the game plays (`docs/DEMO.md`, check 10). It was slow to respond to each spoken command.
+
+**Where the time went** (measured on production, 2026-11-19): the server answers each call in 0.2–0.7 s. A response with a screenshot (`both` or `vision`) is about 125 KB; in `state` mode it's 2–3 KB. The rest is the model: the old directed prompt asked for "a few moves" per command, so each sentence meant several rounds of thinking, each reading a screenshot.
+
+**Changes (2026-11-19):**
+- The server instructions tell the model to carry out each spoken or typed instruction with one tool call (an assisted move), answer in one sentence, and not to observe first. They suggest perception `state` for voice, and short `doom_autoplay` calls (5 s).
+- The directed prompt in `docs/DEMO.md` asks for the same.
+- **Time freeze, made visible:** the game was already frozen on the server between calls. The viewer now says so: **⏸ frozen until ChatGPT moves** whenever it has nothing left to play.
+- **Jump to live:** clicking into the viewer's Tell box or pressing 🎤 skips any moves still playing back, so you give orders about the game as it is now. ChatGPT's own voice mode doesn't tell the viewer when you start talking, so there only the badge helps.
+
+**To retest:** in ChatGPT voice mode, say the directed prompt from `docs/DEMO.md`, then "go through the door on the left", "shoot the zombie", "explore this area". Note roughly how long each takes from the end of your sentence to the viewer moving.
+
 ## Recommendation for the talk
 
-- **Lead with dictation into the composer.** It's reliable everywhere.
+- **In ChatGPT, try live voice mode** with the directed prompt (section 4). Retest the speed on the presenting machine first.
+- **In Claude, lead with dictation into the composer.** It's reliable everywhere.
 - **Show the viewer's push-to-talk** as the "inside the game" version once it's confirmed in the host you'll present with.
 - **Keep the typed Tell Claude box** as the backup, since it works wherever the host accepts app messages.

@@ -39,7 +39,13 @@ Assisted moves (smoother to watch, fewer calls):
 - doom_attack aims and fires at enemies in range until they're dead or something changes. Prefer it for routine fights; use doom_turn + doom_act fire for precise shots, and doom_act for strafing, backing off and switching weapons.
 - doom_autoplay plays on its own for up to 20 s (default 10): it fights what's in range, picks up keys, ammo, health and weapons it needs, opens doors, explores, and with goal "exit" heads for the exit once it's seen. It hands back to you when health gets low, ammo runs out with enemies around, it's stuck, or the level ends. Use it to cover ground; take over with the other tools for hard fights and anything specific.
 - All of them return a "result" line that says why they stopped (enemy spotted, took damage, blocked, time's up): read it and decide the next move.
-- When dead, doom_act ["use"] restarts the level.`;
+- When dead, doom_act ["use"] restarts the level.
+
+When the user directs you (typed, dictated or spoken, e.g. in a voice conversation):
+- Carry out each instruction with ONE tool call when you can, then answer in one short sentence and wait for the next instruction. "Go through the door on the left" is one doom_goto, "shoot the imp" one doom_attack, "explore this area" one doom_autoplay with goal "explore". The game stays frozen while you wait, so there's no hurry.
+- Don't doom_observe first: every tool returns the new state. Don't chain extra moves the user didn't ask for.
+- Keep doom_autoplay short (max_seconds 5) so the viewer stays in step with what the user is reacting to.
+- For voice, start the game with perception "state": no screenshot to read, so each step is faster. The viewer still shows the game.`;
 
 const caption = z.string().max(LIMITS.maxCaptionLength).optional().describe("One short sentence about what you are doing and why, shown to the audience, e.g. 'Turning to face the imp on the left'.");
 const sessionId = z.string().min(10).max(40).describe("session_id returned by doom_new_game");
@@ -84,7 +90,7 @@ const handler = createMcpHandler(
       {
         title: "New DOOM game",
         description:
-          "Start a new game of DOOM and show it in an inline viewer. Returns a session_id and the first observation (screenshot and/or structured state, depending on `perception`). The game is frozen until you call doom_act or doom_turn.",
+          "Start a new game of DOOM and show it in an inline viewer. Returns a session_id and the first observation (screenshot and/or structured state, depending on `perception`). The game is frozen until you call doom_act or doom_turn. For voice or directed play, prefer perception 'state' (no screenshot, much faster).",
         inputSchema: z.object({
           skill: z.number().int().min(1).max(5).default(3).describe("1 = easiest, 3 = normal (Hurt me plenty), 5 = nightmare"),
           episode: z.number().int().min(1).max(4).default(1),

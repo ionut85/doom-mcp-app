@@ -193,11 +193,12 @@ async function poll() {
 
 const toSteps = (rows: LogResult["steps"]): TicStep[] => rows.map(([f, s, t, b, n]) => ({ f, s, t, b, n }));
 
-function setSmoothBadge(text: string | null) {
+function setSmoothBadge(text: string | null, frozen = false) {
   const b = $("smooth-badge");
   b.hidden = !text;
   b.textContent = text ?? "";
-  b.classList.toggle("smooth", smoothState === "on");
+  b.classList.toggle("smooth", smoothState === "on" && !frozen);
+  b.classList.toggle("frozen", frozen);
 }
 
 function onSmoothState(st: ReturnType<SmoothPlayer["engine"]["getState"]>, behind: number) {
@@ -206,7 +207,9 @@ function onSmoothState(st: ReturnType<SmoothPlayer["engine"]["getState"]>, behin
     { health: st.health, armor: st.armor, weapon: st.weapon, ammo: ammoFor(st), kills: `${st.kills}/${st.totalKills}`, status: st.gamestate === "intermission" ? "level_complete" : st.dead ? "dead" : "alive" },
     st.gametic,
   );
-  setSmoothBadge(behind > FAST_BEHIND ? "catching up 2×" : "35 fps");
+  // Nothing left to play: the server's game is frozen too, until the next move arrives.
+  if (behind === 0) setSmoothBadge(`⏸ frozen until ${AI} moves`, true);
+  else setSmoothBadge(behind > FAST_BEHIND ? "catching up 2×" : "35 fps");
   // Safety net: once the queue is drained, the local game must be exactly where the server's is.
   if (behind === 0 && smooth && !fetchingLog && st.gametic !== smoothBaseTic + smoothTotalTics) {
     diag.desync = { local: st.gametic, expected: smoothBaseTic + smoothTotalTics, at: new Date().toISOString() };
@@ -428,9 +431,18 @@ function setTalkStatus(text: string) {
   talkStatus.textContent = text;
 }
 
+/** Before the user gives an order, show the game as it is now (skip any moves still playing back). */
+async function jumpToLive() {
+  if (!smooth || mode !== "watch") return;
+  await fetchNewSteps();
+  smooth?.catchUp();
+  diag.jumpsToLive = ((diag.jumpsToLive as number) ?? 0) + 1;
+}
+
 async function sendToClaude(text: string) {
   const msg = text.trim();
   if (!msg) return;
+  await jumpToLive();
   setTalkStatus("Sending…");
   try {
     const r = await app.sendMessage({ role: "user", content: [{ type: "text", text: msg }] });
@@ -446,6 +458,7 @@ async function sendToClaude(text: string) {
 }
 
 $("talk-send").onclick = () => void sendToClaude(talkText.value);
+talkText.onfocus = () => void jumpToLive();
 talkText.onkeydown = (e) => {
   if (e.key === "Enter" && !e.isComposing) {
     e.preventDefault();
@@ -459,6 +472,7 @@ function toggleListening() {
     return;
   }
   if (!SpeechRecognitionCtor) return;
+  void jumpToLive();
   const rec = new SpeechRecognitionCtor();
   rec.lang = navigator.language || "en-US";
   rec.interimResults = true;

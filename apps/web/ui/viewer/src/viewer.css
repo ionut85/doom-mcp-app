@@ -75,6 +75,7 @@ button:disabled { opacity: .5; cursor: default; }
 .toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
 .toggle input { accent-color: var(--accent); }
 .badge.smooth { color: var(--hud); border-color: currentColor; }
+.badge.frozen { color: var(--fg); border-color: var(--line); background: var(--panel); }
 
 .talk { display: flex; gap: 6px; }
 .talk input { flex: 1 1 auto; min-width: 0; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; font: inherit; }
