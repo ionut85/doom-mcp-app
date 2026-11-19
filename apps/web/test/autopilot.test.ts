@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoAttack, autoGoto, clearEngineCache, newGame, observeSession } from "../lib/game";
+import { autoAttack, autoGoto, autoPlay, clearEngineCache, newGame, observeSession } from "../lib/game";
 
 const strip = <T extends { events: string[]; result?: string }>(s: T) => ({ ...s, events: [], result: undefined });
 
@@ -36,6 +36,25 @@ describe("assisted moves", () => {
     console.log(r.obs.state.result, r.obs.state.position);
     const moved = Math.hypot(r.obs.state.position.x - g.obs.state.position.x, r.obs.state.position.y - g.obs.state.position.y);
     expect(moved).toBeGreaterThan(100);
+  });
+
+  it("doom_autoplay chains moves for the whole call, keeps its memory, and replays identically", async () => {
+    const g = await newGame({ skill: 3, episode: 1, map: 1, perception: "state" });
+    const id = g.session.id;
+    let r = g;
+    const results: string[] = [];
+    for (let i = 0; i < 4 && r.obs.state.status === "alive"; i++) {
+      r = await autoPlay(id, { goal: "exit", maxSeconds: 10 });
+      results.push(r.obs.state.result ?? "");
+    }
+    console.log(results.join("\n"), r.obs.state.kills, r.obs.state.position);
+    expect(results[0]).toMatch(/^autoplay \(\d+\.\d s\): .*; stopped: .*\. Moves: /);
+    expect(r.session.autoplay?.levelTime).toBeGreaterThan(0);
+    expect(Number(r.obs.state.kills.split("/")[0])).toBeGreaterThan(0);
+    const warm = await observeSession(id);
+    clearEngineCache();
+    const cold = await observeSession(id);
+    expect(strip(cold.obs.state)).toEqual(strip(warm.obs.state));
   });
 
   it("doom_attack with nothing in sight uses no time", async () => {

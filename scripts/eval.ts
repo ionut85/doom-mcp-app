@@ -5,7 +5,9 @@
 //   pnpm eval --policy scripted --perception state --runs 5    # no-AI baseline
 //   pnpm eval --policy assisted --perception state --actions 200 # no-AI bot on doom_goto / doom_attack
 //   pnpm eval --dry-run                                        # plumbing check, no API calls
-//   pnpm eval --no-assist ...                                  # without doom_attack / doom_goto
+//   pnpm eval --policy autoplay --perception state --actions 100 # no-AI: doom_autoplay only
+//   pnpm eval --no-assist ...                                  # without doom_attack / doom_goto / doom_autoplay
+//   pnpm eval --no-autoplay ...                                # without doom_autoplay
 //
 // Per run it writes eval-out/<run>/{summary.json,transcript.json} and appends
 // the summary to docs/eval/results.jsonl. `pnpm eval:report` turns that into docs/EVAL.md.
@@ -36,6 +38,7 @@ const { values: opt } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     // Hide doom_attack / doom_goto, for results comparable with runs from before they existed.
     "no-assist": { type: "boolean", default: false },
+    "no-autoplay": { type: "boolean", default: false },
   },
 });
 
@@ -185,6 +188,36 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
     }
     if (finish(scorer)) stop = "exit";
     return summarize();
+  }
+
+  // --- Autoplay policy (no AI): doom_autoplay(goal "exit") over and over; respawn when dead.
+  if (spec.policy === "autoplay") {
+    let obs = started;
+    const log: string[] = [];
+    while (actions < MAX_ACTIONS && !finish(scorer)) {
+      const st = JSON.parse(obs.content.find((c) => c.type === "text")!.text.split("\n").slice(1).join("\n"));
+      const dead = st.status === "dead";
+      const name = dead ? "doom_act" : "doom_autoplay";
+      obs = await callTool(name, dead ? { session_id: sid, steps: [{ actions: ["use"], tics: 2 }, { actions: [], tics: 10 }] } : { session_id: sid, goal: "exit" });
+      toolCounts[name] = (toolCounts[name] ?? 0) + 1;
+      actions++;
+      scorer.update(await getStats(sid));
+      const text = obs.content.find((c) => c.type === "text")?.text ?? "";
+      if (obs.isError) {
+        errors++;
+        log.push(`${String(actions).padStart(3)} ${name} -> ERROR ${text}`);
+        obs = await callTool("doom_observe", { session_id: sid });
+        continue;
+      }
+      const r = JSON.parse(text.split("\n").slice(1).join("\n"));
+      log.push(`${String(actions).padStart(3)} ${name.replace("doom_", "")} -> ${r.result ?? ""} | hp ${r.health} kills ${r.kills} at ${r.position.x},${r.position.y} t=${r.time_s}s`);
+      if (process.env.EVAL_VERBOSE) console.log(log[log.length - 1]);
+    }
+    if (finish(scorer)) stop = "exit";
+    fs.mkdirSync(path.join(OUT, runId), { recursive: true });
+    const s = summarize();
+    fs.writeFileSync(path.join(OUT, runId, "transcript.json"), JSON.stringify(log, null, 1));
+    return s;
   }
 
   // --- Assisted scripted policy (no AI): doom_goto / doom_attack only -------
@@ -429,7 +462,8 @@ const listed = await rpc<{ tools: { name: string; description: string; inputSche
 const tools: Anthropic.Beta.BetaTool[] = listed.tools
   .filter((t) => !(t._meta?.ui?.visibility ?? ["model"]).every((v: string) => v === "app")) // model-visible only
   .filter((t) => t.name !== "doom_new_game") // the harness starts the game
-  .filter((t) => !(opt["no-assist"] && (t.name === "doom_attack" || t.name === "doom_goto")))
+  .filter((t) => !(opt["no-assist"] && (t.name === "doom_attack" || t.name === "doom_goto" || t.name === "doom_autoplay")))
+  .filter((t) => !(opt["no-autoplay"] && t.name === "doom_autoplay"))
   .map((t) => {
     const { $schema: _drop, ...schema } = t.inputSchema;
     return { name: t.name, description: t.description, input_schema: schema };

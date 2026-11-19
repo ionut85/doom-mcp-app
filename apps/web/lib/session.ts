@@ -6,6 +6,7 @@
 import { Redis } from "@upstash/redis";
 import { customAlphabet } from "nanoid";
 import type { TicStep } from "@doom-player/doom-core/core";
+import type { AutoMemory } from "./autoplay";
 
 export const PERCEPTIONS = ["vision", "state", "both"] as const;
 export type Perception = (typeof PERCEPTIONS)[number];
@@ -29,6 +30,8 @@ export interface Session {
   captions: Caption[];
   /** 64x64-unit map cells the player has stood in (for the map's "visited" overlay) */
   visited?: string[];
+  /** doom_autoplay's memory between calls (doors walked through, failed targets) */
+  autoplay?: AutoMemory;
   version: number;
   createdAt: number;
   updatedAt: number;

@@ -3,7 +3,7 @@ import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@model
 import { z } from "zod";
 import { ACTIONS, MAX_TICS_PER_STEP } from "@doom-player/doom-core/core";
 import { loadViewerHtml, publicOrigin } from "@/lib/assets";
-import { act, autoAttack, autoGoto, frame, inputLog, LIMITS, logResponse, newGame, observeSession, stats, turn, type GotoRequest, type Result } from "@/lib/game";
+import { act, autoAttack, autoGoto, autoPlay, frame, inputLog, LIMITS, logResponse, newGame, observeSession, stats, turn, type GotoRequest, type Result } from "@/lib/game";
 import { observationText } from "@/lib/observe";
 import { rateLimit } from "@/lib/ratelimit";
 import { PERCEPTIONS, sessionStore } from "@/lib/session";
@@ -37,7 +37,8 @@ Assisted moves (smoother to watch, fewer calls):
 - doom_goto walks a planned route for a few seconds: to a door or switch (interactive_id: it opens doors and walks through), an item (item_id), a map position (x, y), or explore=true for unvisited space. Routes open closed doors on the way and avoid damaging floors. Prefer it over step-by-step walking.
 - Out of ammo (only the fist)? Don't fight at range: doom_goto(item_id) to ammo or a weapon first.
 - doom_attack aims and fires at enemies in range until they're dead or something changes. Prefer it for routine fights; use doom_turn + doom_act fire for precise shots, and doom_act for strafing, backing off and switching weapons.
-- Both return a "result" line that says why they stopped (enemy spotted, took damage, blocked, time's up): read it and decide the next move.
+- doom_autoplay plays on its own for up to 20 s (default 10): it fights what's in range, picks up keys, ammo, health and weapons it needs, opens doors, explores, and with goal "exit" heads for the exit once it's seen. It hands back to you when health gets low, ammo runs out with enemies around, it's stuck, or the level ends. Use it to cover ground; take over with the other tools for hard fights and anything specific.
+- All of them return a "result" line that says why they stopped (enemy spotted, took damage, blocked, time's up): read it and decide the next move.
 - When dead, doom_act ["use"] restarts the level.`;
 
 const caption = z.string().max(LIMITS.maxCaptionLength).optional().describe("One short sentence about what you are doing and why, shown to the audience, e.g. 'Turning to face the imp on the left'.");
@@ -126,6 +127,21 @@ const handler = createMcpHandler(
         inputSchema: z.object({ session_id: sessionId, degrees: z.number().min(-180).max(180), caption }),
       },
       async ({ session_id, degrees, caption }) => toolResult(await turn(session_id, degrees, caption)),
+    );
+
+    server.registerTool(
+      "doom_autoplay",
+      {
+        title: "DOOM: autoplay (assisted)",
+        description: `Assisted autopilot: plays on its own for up to max_seconds (default 10, max ${LIMITS.maxAutoplayTics / 35}), chaining doom_attack and doom_goto. It fights enemies within the weapon's range, picks up keys, weapons, armor, ammo (when it has only the fist) and health (below 50), opens closed doors and walks through, uses switches and lifts, and explores unvisited space. With goal "exit" it heads for the exit as soon as it's in the interactives list; with "explore" it never presses the exit. It remembers the doors it went through and the targets it couldn't reach, between calls. It hands back to you early when health falls below ${40} (or 25 below where the call started), when it's out of ammo with enemies around, when nothing reachable is left to explore, when it's stuck, when you die, or when the level ends. Returns the observation plus a "result" line: what happened (kills, pickups, health), why it stopped, and its last few moves. You choose the goal and when to take over.`,
+        inputSchema: z.object({
+          session_id: sessionId,
+          goal: z.enum(["exit", "explore"]).optional().describe('"exit" (default): find and press the exit; "explore": clear and explore the level, never pressing the exit'),
+          max_seconds: z.number().min(1).max(LIMITS.maxAutoplayTics / 35).optional(),
+          caption,
+        }),
+      },
+      async ({ session_id, goal, max_seconds, caption }) => toolResult(await autoPlay(session_id, { goal: goal ?? "exit", maxSeconds: max_seconds, caption })),
     );
 
     server.registerTool(

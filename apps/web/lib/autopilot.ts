@@ -34,7 +34,7 @@ const name = (o: GameObject) => friendlyName(o.type);
 
 const MELEE = new Set(["fist", "chainsaw"]);
 /** How far each weapon is worth firing from. The pistol and shotgun miss a lot beyond this. */
-function weaponRange(weapon: string): number {
+export function weaponRange(weapon: string): number {
   if (MELEE.has(weapon)) return 640; // walk in to punch
   if (weapon === "shotgun" || weapon === "super_shotgun") return 700;
   if (weapon === "pistol" || weapon === "chaingun") return 900;
@@ -46,7 +46,7 @@ const FIST_REACH = 200;
 const AMMO_PICKUP = /^(ammo_clip|box_of_bullets|shells|box_of_shells|shotgun|super_shotgun|chaingun|chainsaw|backpack|rocket|box_of_rockets|rocket_launcher|energy_cell|energy_cell_pack|plasma_rifle)$/;
 
 /** Where to get ammo, for out-of-ammo messages. */
-function ammoAdvice(engine: Engine): string {
+export function ammoAdvice(engine: Engine): string {
   const near = engine.getObjects(SIGHT_RANGE).find((o) => o.kind === "item" && AMMO_PICKUP.test(name(o)));
   return near
     ? `Nearest ammo or weapon: ${name(near)} (item_id ${near.id}, ${near.distance} units): doom_goto(item_id=${near.id}).`
@@ -110,7 +110,7 @@ function liveEnemies(engine: Engine): GameObject[] {
   return engine.getObjects(SIGHT_RANGE).filter((o) => o.kind === "enemy" && o.health > 0);
 }
 
-function stopReason(start: PlayerState, s: PlayerState): string | null {
+export function stopReason(start: PlayerState, s: PlayerState): string | null {
   if (s.gamestate === "intermission") return "level complete";
   if (s.gamestate !== "level") return "the level ended";
   if (s.dead) return "you died";

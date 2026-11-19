@@ -7,9 +7,9 @@ import type { Engine, PlayerState, TicStep } from "@doom-player/doom-core/core";
 
 const TIC_MS = 1000 / 35;
 /** Behind by more than this many tics: play at double speed. */
-const FAST_BEHIND = 420; // 12 s: a full 10 s assisted move plays at real speed
+const FAST_BEHIND = 735; // 21 s: a full 20 s doom_autoplay plays at real speed
 /** Behind by more than this many tics: jump straight to the latest move. */
-const JUMP_BEHIND = 1050; // 30 s
+const JUMP_BEHIND = 1400; // 40 s
 
 export class SmoothPlayer {
   private queue: TicStep[] = [];

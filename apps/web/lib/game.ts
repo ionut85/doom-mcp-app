@@ -14,6 +14,7 @@ import {
   type TicStep,
 } from "@doom-player/doom-core/core";
 import { attack, goto, type GotoTarget, type TicSink } from "./autopilot";
+import { autoplay, emptyMemory, type AutoGoal, type AutoMemory } from "./autoplay";
 import { bootEngine } from "./engine-host";
 import { encodePng } from "./frame";
 import { cellKey } from "./mapview";
@@ -35,6 +36,8 @@ export const LIMITS = {
   maxTicsPerCall: 105,
   /** doom_attack / doom_goto: up to 10 s of game time per call */
   maxAutoTics: 350,
+  /** doom_autoplay: up to 20 s of game time per call */
+  maxAutoplayTics: 700,
   /** ~14 minutes of game time per session */
   maxSessionTics: 30_000,
   maxCaptionLength: 140,
@@ -115,7 +118,7 @@ export async function newGame(opts: { skill: number; episode: number; map: numbe
 }
 
 /** Drives the engine for one call; returns a one-line result for the model (assisted moves). */
-type Runner = (engine: Engine, sink: TicSink, visited: Set<string>) => string | void;
+type Runner = (engine: Engine, sink: TicSink, visited: Set<string>, mem: AutoMemory) => string | void;
 
 async function advance(tool: string, id: string, maxTics: number, run: Runner, caption: string | undefined, label: string): Promise<Result> {
   const t0 = performance.now();
@@ -145,12 +148,13 @@ async function advance(tool: string, id: string, maxTics: number, run: Runner, c
       else newSteps.push({ ...st });
     },
   };
-  const note = run(engine, sink, visited) || undefined;
+  const mem: AutoMemory = s.autoplay ? structuredClone(s.autoplay) : emptyMemory();
+  const note = run(engine, sink, visited, mem) || undefined;
   const obs = observe(engine, prev, s.perception, visited);
   if (note) obs.state.result = note;
 
   const expected = s.version;
-  const next: Session = { ...s, steps: [...s.steps, ...newSteps], visited: [...visited].slice(-MAX_VISITED), version: expected + 1, updatedAt: Date.now() };
+  const next: Session = { ...s, steps: [...s.steps, ...newSteps], visited: [...visited].slice(-MAX_VISITED), ...(s.autoplay || mem.levelTime ? { autoplay: mem } : {}), version: expected + 1, updatedAt: Date.now() };
   if (caption || newSteps.length) {
     addCaption(next, { tic: obs.state.tic, text: (caption ?? "").slice(0, LIMITS.maxCaptionLength), action: label });
   }
@@ -189,6 +193,12 @@ const autoTics = (seconds: number | undefined, dflt: number) =>
 /** Assisted: aim at and shoot the target (or the nearest visible enemy), then the next one, for up to max_seconds. */
 export async function autoAttack(id: string, opts: { targetId?: number; maxSeconds?: number; caption?: string }): Promise<Result> {
   return advance("doom_attack", id, autoTics(opts.maxSeconds, 5), (engine, sink) => attack(engine, sink, { targetId: opts.targetId }), opts.caption, "attack");
+}
+
+/** Assisted autopilot: chains goto and attack toward a goal until something needs a decision. */
+export async function autoPlay(id: string, opts: { goal: AutoGoal; maxSeconds?: number; caption?: string }): Promise<Result> {
+  const tics = Math.max(1, Math.min(LIMITS.maxAutoplayTics, Math.round((opts.maxSeconds ?? 10) * TICRATE)));
+  return advance("doom_autoplay", id, tics, (engine, sink, visited, mem) => autoplay(engine, sink, visited, opts.goal, mem), opts.caption, `autoplay (${opts.goal})`);
 }
 
 export type GotoRequest =

@@ -318,7 +318,9 @@ claude-plays-doom/
     - Waypoints are skipped only when the straight line to the next one is clear (it cut corners into solid things).
     - Fist only: `doom_attack` won't chase beyond ~200 units, and both tools say where the nearest ammo is.
     - `explore` with nothing reachable left lists the closed doors you can reach, unexplored ones first.
-  - `pnpm eval --no-assist` hides them, so results stay comparable with the earlier evals.
+  - Longer moves (2026-11-19): `doom_goto` defaults to 8 s and `doom_attack` to 5 s, up to 10 s. Modest gain (skill 3 bot: 2.1 → 2.9 s per call), because most calls end on arrival or on an enemy.
+  - `doom_autoplay` (2026-11-19): a server-side autopilot chaining `doom_attack` and `doom_goto` with the free bot's decision rules, for up to 20 s (default 10 s). Goal `exit` or `explore`. Its memory (doors walked through, failed targets) lives in the session as an optional `autoplay` field and resets when the level restarts; the input log is still plain TicSteps, so replay is unchanged. The viewer plays up to 21 s of backlog at real speed. The autoplay-only bot cleared E1M1 in 4 calls at skill 2 and 21 at skill 3 (one death), about 10 s of game per call.
+  - `pnpm eval --no-assist` hides all three, so results stay comparable with the earlier evals; `--no-autoplay` hides only `doom_autoplay`.
 - **Docs.** `docs/DEMO.md` is the run-sheet (prompts for three modes, checklist, fallbacks, talking points). `docs/voice.md` covers voice. The README diagram is updated.
 
 ### References

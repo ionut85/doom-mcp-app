@@ -118,6 +118,19 @@ Raised the defaults to 8 s for `doom_goto` and 5 s for `doom_attack`, and the ma
 - The skill-3 run took more calls because the bot died at call 11 and replayed from the start. The bot keeps attacking at low health; Claude retreats, so this is the bot, not the tools.
 - Larger gains would need a tool that chains moves on the server (go, fight, go on) instead of stopping at each arrival.
 
+## `doom_autoplay` (2026-11-19, $0)
+
+A server-side autopilot with the free bot's rules (fight what's in range, pick up what's needed, open doors, use switches and lifts, explore, press the exit once seen), for up to 20 s per call. A bot that only calls `doom_autoplay(goal: "exit")`, and `use` after dying, against a local server:
+
+| Skill | Calls to the exit | Game per call | Kills | Deaths |
+|---|---|---|---|---|
+| 2 | 4 | ~10 s | 5/17 | 0 |
+| 3 | 21 | ~10 s | 17/29 | 1 |
+
+- The skill-3 death came right after autoplay handed back with "health is low (23)": the bot just called it again. Claude gets the same handback and can heal or retreat.
+- Most calls run the full 10 s. Server time was about 0.7 s per call locally.
+- The middle of the skill-3 run spent about 90 s of game exploring before going back to doors it had skipped, so goal `exit` isn't a straight line to the exit.
+
 ## Spend
 
 - About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
