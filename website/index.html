@@ -247,7 +247,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <p class="sub">DOOM runs at 35 tics a second; a chat model thinks in seconds. So the game is frozen between tool calls, and every call advances an exact number of tics.</p>
   <div class="flow">
     <div class="step"><h3>You speak</h3><p>"Go through the door on the left and kill the imp." The model turns intent into game actions.</p></div>
-    <div class="step"><h3>It calls a tool</h3><p><code>doom_act</code>, <code>doom_turn</code> or <code>doom_observe</code> on an MCP server over Streamable HTTP.</p></div>
+    <div class="step"><h3>It calls a tool</h3><p><code>doom_act</code>, <code>doom_turn</code>, an assisted move like <code>doom_goto</code>, or <code>doom_observe</code> on an MCP server over Streamable HTTP.</p></div>
     <div class="step"><h3>The server steps DOOM</h3><p>It rebuilds the session from its input log, applies the steps, then freezes the game again.</p></div>
     <div class="step"><h3>It sees the result</h3><p>A screenshot, structured state, or both, back to the model. The inline viewer updates in the chat.</p></div>
   </div>
@@ -280,13 +280,16 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <section><div class="wrap split">
   <div>
     <div class="eyebrow">The tools</div>
-    <h2>Five tools, one of them hidden.</h2>
+    <h2>Seven tools for the model, three hidden.</h2>
     <table>
       <tr><td><code>doom_new_game</code></td><td>Starts a game and opens the inline viewer.</td></tr>
       <tr><td><code>doom_act</code></td><td>Holds actions for a number of tics, up to 8 steps per call, with an optional caption.</td></tr>
       <tr><td><code>doom_turn</code></td><td>Turns by exact degrees, the same convention as enemy angles.</td></tr>
+      <tr><td><code>doom_goto</code></td><td>Assisted: plans a route and runs it to a door, item, lift or unexplored space, opening doors on the way.</td></tr>
+      <tr><td><code>doom_attack</code></td><td>Assisted: aims and fires at enemies in range, one after another.</td></tr>
+      <tr><td><code>doom_autoplay</code></td><td>Assisted autopilot: fights, picks up, opens doors and explores for up to 20 s, then hands back to the model.</td></tr>
       <tr><td><code>doom_observe</code></td><td>Looks without letting time pass.</td></tr>
-      <tr><td><code>doom_frame</code></td><td>For the viewer only, hidden from the model. Polls the latest frame and captions.</td></tr>
+      <tr><td><code>doom_frame</code>, <code>doom_log</code>, <code>doom_stats</code></td><td>For the viewer and the eval harness only, hidden from the model: the latest frame and captions, the input log for smooth playback, and scoring.</td></tr>
     </table>
   </div>
   <div>

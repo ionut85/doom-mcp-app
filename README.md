@@ -17,7 +17,7 @@ An experiment in how far **MCP Apps** can go. DOOM runs headless on a server as 
 
 The goal: play it inside ChatGPT, by voice.
 
-- **Autonomous:** "Start a game of DOOM and clear E1M1."
+- **Autonomous:** "Start a game of DOOM and clear E1M1." Claude plays move by move, or hands stretches of the level to an assisted autopilot.
 - **Directed:** "Go through the door on the left and kill the imp."
 - **Voice:** say it out loud in ChatGPT and let the model turn it into game actions *(in progress)*.
 - **Human:** play it yourself in the browser *(in progress)*.
@@ -102,14 +102,14 @@ flowchart LR
   subgraph vercel["Vercel"]
     subgraph fn["Function · /api/mcp"]
       M["MCP endpoint<br/>(Next.js + mcp-handler)"]
-      G["Game service<br/>(cache · replay · observe)"]
+      G["Game service<br/>(cache · replay · observe<br/>· assisted moves)"]
       E["DOOM engine<br/>(doomgeneric → wasm)"]
     end
     S["Static assets /doom/*<br/>engine + Freedoom WAD"]
   end
   R[("Upstash Redis<br/>session = input log")]
 
-  C -- "doom_act / doom_turn" --> M
+  C -- "doom_act / doom_turn<br/>doom_goto / doom_attack / doom_autoplay" --> M
   M -- "PNG + JSON state + map" --> C
   V -- "doom_frame + doom_log<br/>(app-only, polled)" --> M
   V -- "Tell Claude (typed or spoken)" --> C
@@ -119,13 +119,14 @@ flowchart LR
   G <--> R
 ```
 
-Four ideas make it work:
+Five ideas make it work:
 
 | Idea | What it means |
 |---|---|
 | **Virtual time** | The engine's clock only moves when Claude acts. Each call advances an exact number of tics (35 tics = 1 s), then the game freezes. |
 | **Deterministic replay** | Serverless functions don't keep a game in memory. A session is just the list of inputs, stored in Redis; any instance rebuilds the exact game by replaying it (~14 ms for 5 minutes of play). A warm cache skips replay most of the time. |
 | **Exact controls** | Inputs go straight into DOOM's per-tic command (`ticcmd`) through a 3-line patch, so "turn 37.5° right" is exact. That makes aiming at enemies by their relative angle work. |
+| **Assisted moves** | Claude thinks for about 4 s per call, so the game would mostly stand still. `doom_goto`, `doom_attack` and `doom_autoplay` plan routes and aim on the server, tic by tic, and play several seconds per call (up to 20 s for autoplay). They log ordinary inputs, so replay stays exact. With autoplay each call plays 6–8 s of game, more than the time Claude spends between calls, so the viewer keeps moving. |
 | **Perception modes** | Each action returns a 640×400 screenshot (`vision`), structured state such as enemies with distance, `turn` and `in_crosshair`, nearby doors and a mini-map (`state`), or both (`both`, the default). |
 
 There's an interactive walkthrough of one action, end to end, in the [architecture explainer](https://claude.ai/artifact/F5uGrMYXP7UnsTLz2EJsm1).
@@ -217,11 +218,12 @@ claude mcp add --transport http doom-local http://localhost:3000/api/mcp
 | `doom_act` | Claude | Holds actions for a number of tics, up to 8 steps and 105 tics per call. Actions: `forward`, `back`, `strafe_left`, `strafe_right`, `turn_left`, `turn_right`, `run`, `fire`, `use`, `weapon_1`…`weapon_7`. Takes an optional `caption` shown in the viewer. |
 | `doom_turn` | Claude | Turns by exact degrees: negative = left, positive = right. Every `turn` value in an observation is the exact argument to face that thing. |
 | `doom_goto` | Claude | **Assisted.** Plans a route around walls and runs it for up to 10 s of game time (default 8 s): to a door or switch from `interactives` (it presses use and waits for the door), a lift (it rides it), an item, a map position, or `explore: true` for unvisited space. It opens closed doors on the way, goes around solid things and nukage, and drops off ledges but won't try to climb them. Stops when a new enemy appears, you take damage, or the way is blocked, and says why in `result`. |
-| `doom_autoplay` | Claude | **Assisted autopilot.** Plays on its own for up to 20 s (default 10 s) by chaining `doom_attack` and `doom_goto`: fights what's in range, picks up keys, weapons, armor, needed ammo and health, opens doors, uses switches and lifts, explores, and with `goal: "exit"` presses the exit once it's seen. Remembers doors and failed targets between calls. Hands back when health gets low, ammo runs out with enemies around, it's stuck, or the level ends, and lists what happened in `result`. |
 | `doom_attack` | Claude | **Assisted.** Aims and fires at enemies within the weapon's useful range, then the next one, for up to 10 s (default 5 s). Walks in with fists. Stops on heavy damage, no ammo or no enemies left, and says why in `result`. |
+| `doom_autoplay` | Claude | **Assisted autopilot.** Plays on its own for up to 20 s (default 10 s) by chaining `doom_attack` and `doom_goto`. It fights what's in range, picks up keys, weapons, armor, needed ammo and health, opens doors, uses switches and lifts, and explores in short slices so it notices the exit and items on the way. With `goal: "exit"` (default) it presses the exit once it's seen; with `"explore"` it never does. It remembers doors and failed targets between calls, and when everything reachable is explored it tries every closed door it can reach, unexplored ones first. It hands back when health falls below 50 or drops by 35 in one call, ammo runs out with enemies around, it's stuck, or the level ends. `result` lists what happened (kills, pickups, health), why it stopped, and its last few moves. |
 | `doom_observe` | Claude | Returns the current observation without advancing time. |
 | `doom_frame` | Viewer only | Returns the latest frame, HUD and captions for the inline viewer. Hidden from Claude via `visibility: ["app"]`. |
 | `doom_log` | Viewer only | Returns the session's input log, so **Play yourself** can rebuild Claude's game in the browser and hand you the controls from Claude's exact position. |
+| `doom_stats` | Eval harness only | Full player state (position, kills, health) whatever the perception mode, for scoring. Hidden from the model. |
 
 An observation in `state` or `both` mode looks like this, shortened:
 
@@ -242,6 +244,7 @@ An observation in `state` or `both` mode looks like this, shortened:
 - `heading` is a compass bearing (0 = north, clockwise).
 - `interactives` lists nearby doors, switches, lifts and exits.
 - `map` is a 21×21 north-up ASCII map, one character per 64×64 map units. It marks walls, doors, switches, the exit, enemies, items and the cells you've already visited.
+- After an assisted move, `result` says what happened and why it stopped (enemy spotted, took damage, blocked, time's up).
 - Vision-only play gets none of this: just the screenshot and the HUD numbers.
 
 Limits per session: 30,000 tics (about 14 minutes of game time), a 24 h lifetime, and 300 requests per minute per IP.
@@ -258,6 +261,8 @@ Limits per session: 30,000 tics (about 14 minutes of game time), a 24 h lifetime
 | `pnpm play-cli [script.json]` | Run a scripted step list headlessly and write PNGs to `out/` |
 | `pnpm dev` | Run the web app and MCP server locally |
 | `pnpm bot [url] [n] [mode]` | Scripted bot against an MCP endpoint |
+| `pnpm eval [options]` | Play E1M1 with Claude through the Claude API (needs API credentials and costs money) or with a free bot (`--policy scripted`, `assisted` or `autoplay`); results go to `docs/eval/results.jsonl` (see `scripts/eval.ts` for options) |
+| `pnpm eval:report` | Regenerate `docs/EVAL.md` from the results |
 | `pnpm build:engine` | Rebuild `engine/dist/` from C (needs Emscripten) |
 
 ### Changing the C engine
@@ -318,10 +323,13 @@ engine/                  C engine → WebAssembly (Emscripten)
 packages/doom-core/      TypeScript engine wrapper (Node + browser) and tests
 apps/web/                Next.js app on Vercel
   app/api/mcp/           MCP endpoint and tools
-  lib/                   sessions (Redis), engine cache and replay, observations
+  lib/                   sessions (Redis), engine cache and replay, observations,
+                         route planner (nav.ts) and assisted moves (autopilot.ts, autoplay.ts)
   ui/viewer/             inline MCP App viewer (single-file Vite build)
-scripts/                 get-wad.sh, play-cli.ts, mcp-bot.ts
+scripts/                 get-wad.sh, play-cli.ts, mcp-bot.ts, eval.ts, eval-report.ts, export-replay.ts
 docs/PLAN.md             plan, progress, deviations and measurements
+docs/DEMO.md             demo run-sheet: prompts, checklist, fallbacks
+docs/EVAL.md             eval results (generated); notes in docs/eval/NOTES.md
 ```
 
 ---

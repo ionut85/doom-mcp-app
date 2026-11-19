@@ -10,7 +10,9 @@ MCP endpoint: `https://doom-player.vercel.app/api/mcp`
 - [ ] **Do one full rehearsal on the presenting machine, network and app.** Check that:
   - the viewer appears;
   - the **35 FPS** badge shows (smooth playback);
-  - **Play yourself** works.
+  - **Play yourself** works;
+  - one `doom_autoplay` call: the viewer plays its 10–20 s of game smoothly at normal speed, and the captions keep up;
+  - a full autonomous run with the prompt below. Autoplay's hand-back rules changed after the last paid eval (it now stops mid-fight below 50 health), so the rehearsal is the first time Claude plays with them.
 - [ ] **Warm the server** 5 minutes before going on. Start any game, so the first call on stage doesn't pay the ~2 s cold start.
 - [ ] **Record the fallback video.** Open https://doom-player.vercel.app/replay, pick **Skill 3**, set **1×**, click **Record video**, and save the WebM file locally. That's Claude's real E1M1 completion, re-rendered exactly from its inputs.
 - [ ] **Have Claude Code ready** in a terminal as the backup (see Fallbacks).
@@ -18,20 +20,29 @@ MCP endpoint: `https://doom-player.vercel.app/api/mcp`
 
 ## 1. Autonomous: "Claude, clear E1M1 by yourself"
 
-Prompt:
+Prompt (the most fluid run):
 
-> Start a game of DOOM on skill 2 and clear E1M1 by yourself. Caption every move so the audience can follow your thinking.
+> Start a game of DOOM on skill 2 and clear E1M1. Use doom_autoplay to cover ground, and take over yourself for hard fights, healing and anything it gets stuck on. Caption every move so the audience can follow your thinking.
 
-- **Skill 2** is the safer choice live: in our evals Claude finished it in 74 moves without taking damage. On **skill 3**, the default ("Hurt me plenty"), it took 140 moves and finished with 39 health.
-- **Claude.ai stops a long turn after a number of tool calls.** When Claude stops and summarizes, type **continue**. A full level takes a few "continues".
-- **Claude mostly uses the assisted moves** (`doom_goto`, `doom_attack`): each covers a few seconds of game time, so the game moves for longer between pauses. To show Claude aiming by itself, ask it to "use doom_turn and doom_act only".
-- **For the most fluid run**, ask Claude to "use doom_autoplay to cover ground and take over for hard fights". Each autoplay call plays about 10 s, so the viewer keeps moving while Claude thinks. It's labelled as an assist: Claude picks the goal and when to take over.
+- **Pick the style.** Claude has three ways to play. They differ in how much the game moves while Claude thinks, and in how much of the play is Claude's own:
+
+  | Style | Add to the prompt | Game per call | What the audience sees |
+  |---|---|---|---|
+  | Autopilot plus Claude (above) | "Use doom_autoplay to cover ground…" | 6–8 s | The game keeps moving. Claude picks the goal and takes over when autoplay hands back |
+  | Assisted moves | "Use doom_goto and doom_attack, not doom_autoplay" | about 1.5 s | Claude chooses every destination and fight; short pauses between moves |
+  | Claude alone | "Use doom_turn and doom_act only" | about 0.5 s | Claude aiming and stepping itself; the game mostly waits for it |
+
+  Without a hint, Claude picks for itself; in our runs it used autoplay for about a third of its calls and `doom_goto` for most of the rest.
+- **Skill 2 is the safer choice live.** With the assisted tools, Claude cleared E1M1 on **skill 3** ("Hurt me plenty", the default) in all 4 recent runs: 23 and 43 actions with autoplay, 39 and 42 without. Skill 2 has fewer and weaker monsters; the autopilot alone clears it in 2–4 calls. Unassisted, Claude needed 74 moves on skill 2 and 140 on skill 3.
+- **Claude.ai stops a long turn after a number of tool calls.** When Claude stops and summarizes, type **continue**. With autoplay a level takes 23–43 calls instead of 74–140, so expect fewer "continues".
+- **The viewer can run behind the chat** by up to about 20 s after an autoplay call: Claude has already moved on while the viewer is still playing what happened. That's normal. Past 21 s of backlog it plays at 2× and the badge says **catching up 2×**.
 - **What to point out while it plays:**
   - captions under the screen;
-  - the game freezing while Claude thinks (virtual time);
-  - aiming by exact angle;
+  - the game freezing on the server while Claude thinks (virtual time), while the viewer keeps playing the backlog;
+  - autoplay handing back: its result says why ("health 59, down 41 this call: your call"), and Claude decides whether to heal, retreat or fight on;
+  - aiming by exact angle when Claude takes over a fight;
   - Claude opening doors and heading for the exit switch.
-- **If Claude stands still or bumps a wall twice,** nudge it: "use the map, head for the door".
+- **If autoplay says it's stuck, or that everything reachable is explored,** Claude usually takes over by itself. If not, nudge it: "use the map, head for the door".
 
 ## 2. Directed: you give the orders
 
@@ -45,13 +56,14 @@ Then give commands, either typed or dictated:
 - in the viewer's **Tell Claude** box under the screen (type, or press 🎤 where the host allows the microphone).
 
 Commands that work well:
-- "Walk forward until you reach the door, then open it."
-- "Turn to the zombie on the left and shoot it."
+- "Go through the door on the left." (`doom_goto` opens it and walks through.)
+- "Turn to the zombie on the left and shoot it." (`doom_attack`, or an exact turn and fire.)
 - "Back off to the corridor, you're taking damage."
 - "Grab the shotgun and switch to it."
-- "Find the exit switch."
+- "Explore this area and deal with anything you meet." (`doom_autoplay` with goal `explore`, which never presses the exit.)
+- "Find the exit switch." (`doom_autoplay` with goal `exit`.)
 
-Short, concrete commands work best. Each becomes a handful of tool calls. Voice details and what's verified are in `docs/voice.md`.
+Short, concrete commands work best. Each becomes one or a few tool calls. Voice details and what's verified are in `docs/voice.md`.
 
 ## 3. Human: play it yourself
 
@@ -70,16 +82,19 @@ Short, concrete commands work best. Each becomes a handful of tool calls. Voice 
 | The network is slow or down | Play the recorded video from `/replay`. |
 | claude.ai is having problems | Use Claude Code: `claude mcp add --transport http doom https://doom-player.vercel.app/api/mcp`, then the autonomous prompt. Same tools, no inline viewer. |
 | Claude dies | It can say `use` to restart, or you prompt "you died, restart and be more careful". |
+| Autoplay keeps handing back at low health | Expected on skill 3: it stops below 50 health so Claude decides. Prompt "grab health, then carry on", or switch to skill 2. |
+| Claude seems to have finished but the viewer is still playing | Wait: the viewer is playing the last autoplay call (up to ~20 s). |
 | "Unknown or expired session_id" | Sessions last 24 hours. Start a new game. |
 
 ## Talking points (numbers from `docs/EVAL.md`)
 
-- **Claude finishes E1M1.** 140 moves on Hurt me plenty, $3.43 of API cost. Skill 2: 74 moves, $1.35.
+- **Claude finishes E1M1.** With the assisted tools: 23–43 actions on Hurt me plenty, $0.41–0.90 of API cost, in all 4 recent runs. Unassisted, the one finish took 140 moves and $3.43.
+- **Why assisted moves exist.** Claude thinks for about 4 s per call. Unassisted, each call played about 0.5 s of game, so the viewer stood still most of the time. With autoplay a call plays 6–8 s, more than the thinking time, so the game keeps moving. It's an assist and labelled as one: the autopilot runs on the server with simple rules, and Claude chooses the goal and when to take over.
 - **Claude vs a scripted bot.** Over 50 moves Claude kills about 3× as many monsters (6.0 vs 2 at skill 3).
 - **Seeing vs knowing.** With structured state (exact angles, a mini-map, nearby doors) Claude gets roughly twice the kills it gets from screenshots alone.
 - **Virtual time.** The game only moves when Claude acts, so it can think as long as it likes.
-- **Determinism.** A game is just its list of inputs. Any server, or your browser, can rebuild it exactly. That's how the viewer plays smoothly, how "Play yourself" takes over mid-game, and how `/replay` re-renders the winning run.
-- **What a move costs.** About $0.01 per move with prompt caching (50-move runs: $0.51–0.80).
+- **Determinism.** A game is just its list of inputs. Any server, or your browser, can rebuild it exactly. That's how the viewer plays smoothly, how "Play yourself" takes over mid-game, and how `/replay` re-renders the winning run. The assisted moves keep that property: they log ordinary per-tic inputs, and replaying Claude's tool calls rebuilds the same game exactly.
+- **What a move costs.** About $0.01–0.02 per move with prompt caching. A full assisted level costs $0.41–0.90.
 
 ## Testing in ChatGPT
 

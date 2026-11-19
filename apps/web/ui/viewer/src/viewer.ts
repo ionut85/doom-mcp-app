@@ -10,7 +10,7 @@ import type { TicStep } from "@doom-player/doom-core/core";
 import { PlayerInput } from "../../../lib/play/input";
 import { GameLoop } from "../../../lib/play/loop";
 import { loadEngine } from "../../../lib/play/load";
-import { SmoothPlayer } from "./smooth";
+import { FAST_BEHIND, SmoothPlayer } from "./smooth";
 
 // Replaced by the server when it serves the resource (lib/assets.ts).
 const ORIGIN = "__DOOM_PUBLIC_ORIGIN__";
@@ -206,7 +206,7 @@ function onSmoothState(st: ReturnType<SmoothPlayer["engine"]["getState"]>, behin
     { health: st.health, armor: st.armor, weapon: st.weapon, ammo: ammoFor(st), kills: `${st.kills}/${st.totalKills}`, status: st.gamestate === "intermission" ? "level_complete" : st.dead ? "dead" : "alive" },
     st.gametic,
   );
-  setSmoothBadge(behind > 105 ? "catching up 2×" : "35 fps");
+  setSmoothBadge(behind > FAST_BEHIND ? "catching up 2×" : "35 fps");
   // Safety net: once the queue is drained, the local game must be exactly where the server's is.
   if (behind === 0 && smooth && !fetchingLog && st.gametic !== smoothBaseTic + smoothTotalTics) {
     diag.desync = { local: st.gametic, expected: smoothBaseTic + smoothTotalTics, at: new Date().toISOString() };

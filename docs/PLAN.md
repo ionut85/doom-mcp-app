@@ -75,7 +75,7 @@ Every `doom_act` / `doom_observe` returns, depending on the session's `perceptio
 
 Tool descriptions must teach Claude how to play, e.g.: "short steps (7–14 tics) near enemies; turn toward an enemy using its relative angle, then fire; press `use` facing doors/switches; check health and back off below 30." Add an optional `caption` string on `doom_act` ("Turning to face the imp") that the viewer shows. Great for the audience.
 
-Optional, clearly labelled as assist: `doom_aim_nearest({session_id})`. Keep it off by default, so the "pure" demo stays honest.
+Optional, clearly labelled as assist: `doom_aim_nearest({session_id})`. Keep it off by default, so the "pure" demo stays honest. *(Built instead as three labelled assists, `doom_goto`, `doom_attack` and `doom_autoplay`, for fluidity: see section 8, Phase 6 results. `pnpm eval --no-assist` and the demo prompt "use doom_turn and doom_act only" give the pure version.)*
 
 ### 2.8 Inline viewer (MCP App UI)
 - Created by `doom_new_game`. Shows: the frame canvas (crisp scaling), a HUD strip, the last N actions with Claude's captions, a perception badge, and a "replaying…" spinner.
@@ -151,7 +151,7 @@ claude-plays-doom/
 - [x] Tune tool descriptions + server instructions; a system-prompt-style "how to play DOOM" guide in the server `instructions`.
 - [x] Evaluate 5 runs per perception mode on E1M1 (skill 2 and 3): kills, damage taken, distance explored, exits reached, tokens/action. Record results in `docs/EVAL.md`. Good slide material.
 - [x] Optional ASCII local map *(done, in state/both perception)*.
-- [x] Optional `doom_aim_nearest` assist *(built later as `doom_attack` plus `doom_goto`, for fluidity rather than accuracy: see Phase 6 results)*.
+- [x] Optional `doom_aim_nearest` assist *(built later as `doom_attack`, `doom_goto` and the `doom_autoplay` autopilot, for fluidity rather than accuracy: see Phase 6 results)*.
 
 ### Phase 6: Demo polish
 - [x] Smooth local replay in the viewer (stretch).
@@ -291,7 +291,7 @@ claude-plays-doom/
 - **Claude finishes E1M1.** With a 200-action budget (`both` perception, one run each), Claude reached the exit at skill 2 in 74 actions ($1.35) and at skill 3 in 140 actions ($3.43), without dying.
 
 ### Phase 6 results
-- **Smooth playback.** The viewer runs its own engine. It fetches only new moves (`doom_log` with `from`) and plays them at 35 tics/s: 2× when more than 3 s behind, an instant catch-up when more than 10 s behind. `doom_frame` skips the PNG (`include_frame: false`), and the HUD follows the local engine. After each drain, the local tic must equal the server's, or the viewer resyncs.
+- **Smooth playback.** The viewer runs its own engine. It fetches only new moves (`doom_log` with `from`) and plays them at 35 tics/s: 2× when more than 21 s behind, an instant catch-up when more than 40 s behind (raised from 3 s and 10 s so a 20 s `doom_autoplay` call plays at normal speed). `doom_frame` skips the PNG (`include_frame: false`), and the HUD follows the local engine. After each drain, the local tic must equal the server's, or the viewer resyncs.
   - Verified in `/dev/host`: no resyncs, and the final HUD matches the server's state.
   - It falls back to server frames if the engine can't load, and there's a toggle in the viewer.
 - **Tell Claude.** A box in the viewer posts typed or dictated (Web Speech API) instructions into the chat with `app.sendMessage`. It's shown only when the host advertises `message`. The resource requests `permissions.microphone`.
