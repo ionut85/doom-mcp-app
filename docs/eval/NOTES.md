@@ -90,9 +90,25 @@ The bot also improved along the way (it picks up ammo, health and weapons, follo
 
 The old tools' "blocked" stops were mostly routes that climbed a ledge on a 45° line and routes squeezed between a solid thing and the foot of a ledge. One run each, and the game is chaotic: small changes move a run onto a different path, so take these as "the tools no longer trap the bot", not as precise rates.
 
+### Claude with the fixed tools (label `assist-v2`, 2026-11-19)
+
+Same setup as `assist` (Opus 5.5, medium effort, skill 3, perception `both`, budget 50 actions, $2 cap per run), on production at `54b2abf`.
+
+| | Runs | Exit | Actions to finish | Kills | Damage taken | Cost/run |
+|---|---|---|---|---|---|---|
+| Assisted (`assist`) | 2 | 1 of 2 | 50 | 11 and 12 | 88, 89 | $1.03 |
+| Fixed tools (`assist-v2`) | 2 | **2 of 2** | **39 and 42** | 12 and 12 | 59, 74 | **$0.69** |
+
+- Both runs cleared E1M1 with actions to spare and no deaths. Unassisted at skill 3, only one run in five ever finished, after 140 actions.
+- Claude used `doom_goto` for about 60% of actions (24–25) and `doom_attack` for 13. It never needed `doom_turn`, and needed `doom_act` only 2–4 times.
+- Game time per action stayed about the same (1.4–1.6 s). The gain is fewer wasted actions, not longer ones.
+- Cheaper per run, because runs end sooner and the history stays shorter.
+- Only 2 runs: a good sign, not a rate.
+
 ## Spend
 
 - About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
 - Eval harness: parallel runs now share one API client, so they no longer race to refresh the login (the lost third run above).
-- Assisted runs: $8.09 ($2.06 for the two 50-action runs, $6.03 for the long run). Total so far: about $38.
+- `assist-v2`: $1.37 (2 runs).
+- Assisted runs: $8.09 ($2.06 for the two 50-action runs, $6.03 for the long run). Total so far: about $38, plus $1.37 for `assist-v2`: about $39.4.
 - Run cost scales faster than linearly with the action budget, since every request re-reads the growing history.
