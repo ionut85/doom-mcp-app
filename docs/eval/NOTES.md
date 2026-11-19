@@ -105,6 +105,19 @@ Same setup as `assist` (Opus 5.5, medium effort, skill 3, perception `both`, bud
 - Cheaper per run, because runs end sooner and the history stays shorter.
 - Only 2 runs: a good sign, not a rate.
 
+## Longer assisted moves (2026-11-19, $0)
+
+Raised the defaults to 8 s for `doom_goto` and 5 s for `doom_attack`, and the maximum from 6 s to 10 s. The viewer now plays up to 12 s of backlog at real speed (it used to switch to double speed at 3 s and jump at 10 s, which would have skipped a whole long move). Bot runs against a local server, compared with the previous runs of the same bot:
+
+| Skill | Before | Longer moves |
+|---|---|---|
+| 2 | exit in 21 calls, 2.0 s of game per call | exit in 21 calls, 2.0 s per call |
+| 3 | exit in 55 calls, 2.1 s per call | exit in 89 calls (1 death), 2.9 s per call |
+
+- Most calls still end early for a reason: arriving at a door or item, spotting an enemy, or taking damage. Only `explore` regularly runs to the time limit (17 of 89 calls at skill 3), so the gain is modest.
+- The skill-3 run took more calls because the bot died at call 11 and replayed from the start. The bot keeps attacking at low health; Claude retreats, so this is the bot, not the tools.
+- Larger gains would need a tool that chains moves on the server (go, fight, go on) instead of stopping at each arrival.
+
 ## Spend
 
 - About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).

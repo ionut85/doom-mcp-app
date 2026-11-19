@@ -132,7 +132,7 @@ const handler = createMcpHandler(
       "doom_attack",
       {
         title: "DOOM: attack (assisted)",
-        description: `Assisted fighting: turns to an enemy, fires whenever it's in the crosshair, and moves on to the next visible enemy after a kill, for up to max_seconds (default 3, max ${LIMITS.maxAutoTics / 35}). With the chainsaw it walks in to hit; with only the fist it won't chase anything farther than ~200 units and says where the nearest ammo is. Stops early when no enemy is left in sight, you lose ${25}+ health, you run out of ammo, the target gets out of range, or you die. Only attacks enemies within the current weapon's useful range (pistol ~900 units, shotgun ~700). Returns the observation plus a "result" line saying what happened and why it stopped. You still decide when to fight, retreat, switch weapons or heal.`,
+        description: `Assisted fighting: turns to an enemy, fires whenever it's in the crosshair, and moves on to the next visible enemy after a kill, for up to max_seconds (default 5, max ${LIMITS.maxAutoTics / 35}). With the chainsaw it walks in to hit; with only the fist it won't chase anything farther than ~200 units and says where the nearest ammo is. Stops early when no enemy is left in sight, you lose ${25}+ health, you run out of ammo, the target gets out of range, or you die. Only attacks enemies within the current weapon's useful range (pistol ~900 units, shotgun ~700). Returns the observation plus a "result" line saying what happened and why it stopped. You still decide when to fight, retreat, switch weapons or heal.`,
         inputSchema: z.object({
           session_id: sessionId,
           target_id: z.number().int().optional().describe("id from state.enemies to attack first; default: the nearest visible enemy"),
@@ -147,7 +147,7 @@ const handler = createMcpHandler(
       "doom_goto",
       {
         title: "DOOM: go to (assisted)",
-        description: `Assisted movement: plans a route around walls and walks it at running speed, for up to max_seconds (default 4, max ${LIMITS.maxAutoTics / 35}). Give exactly one target:
+        description: `Assisted movement: plans a route around walls and walks it at running speed, for up to max_seconds (default 8, max ${LIMITS.maxAutoTics / 35}). Give exactly one target:
 - interactive_id: a door, switch, lift or exit from state.interactives. At a switch it faces it and presses use; a door it opens and walks through (unless use=false). At a lift it rides it (calls it if needed, steps on, waits until it stops).
 - item_id: an item from state.nearby_items, to pick it up.
 - x and y: a map position (state.position is yours; the map is 64 units per character, north up, so 3 characters right and 2 up of @ is x+192, y+128).

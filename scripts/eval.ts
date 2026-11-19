@@ -213,12 +213,12 @@ async function runOnce(spec: RunSpec, tools: Anthropic.Beta.BetaTool[], instruct
         (st.health < 50 && want(/stimpack|medikit|health/)) ||
         want(/shotgun|chaingun|backpack|armor|box_of/);
       if (st.status === "dead") (name = "doom_act"), (args = { session_id: sid, steps: [{ actions: ["use"], tics: 2 }, { actions: [], tics: 10 }] });
-      else if (st.weapon === "fist" && item) (name = "doom_goto"), (args = { session_id: sid, item_id: item.id, max_seconds: 6 }), (target = item.type);
+      else if (st.weapon === "fist" && item) (name = "doom_goto"), (args = { session_id: sid, item_id: item.id }), (target = item.type);
       else if (!tooFar && st.enemies?.some((e: any) => e.distance <= (st.weapon === "fist" ? 200 : 900))) (name = "doom_attack"), (args = { session_id: sid });
-      else if (item) (name = "doom_goto"), (args = { session_id: sid, item_id: item.id, max_seconds: 6 }), (target = item.type);
-      else if (suggested !== null && !(pick && /exit/.test(pick.kind))) (name = "doom_goto"), (args = { session_id: sid, interactive_id: suggested, max_seconds: 6 }), (target = `suggested door ${suggested}`);
-      else if (pick) (name = "doom_goto"), (args = { session_id: sid, interactive_id: pick.id, max_seconds: 6 }), (target = `${pick.kind} ${pick.id}`);
-      else (name = "doom_goto"), (args = { session_id: sid, explore: true, max_seconds: 6 }), (target = "explore");
+      else if (item) (name = "doom_goto"), (args = { session_id: sid, item_id: item.id }), (target = item.type);
+      else if (suggested !== null && !(pick && /exit/.test(pick.kind))) (name = "doom_goto"), (args = { session_id: sid, interactive_id: suggested }), (target = `suggested door ${suggested}`);
+      else if (pick) (name = "doom_goto"), (args = { session_id: sid, interactive_id: pick.id }), (target = `${pick.kind} ${pick.id}`);
+      else (name = "doom_goto"), (args = { session_id: sid, explore: true }), (target = "explore");
       obs = await callTool(name, args);
       toolCounts[name] = (toolCounts[name] ?? 0) + 1;
       actions++;

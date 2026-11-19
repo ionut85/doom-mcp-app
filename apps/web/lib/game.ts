@@ -33,8 +33,8 @@ const MAX_VISITED = 4000;
 export const LIMITS = {
   maxStepsPerCall: 8,
   maxTicsPerCall: 105,
-  /** doom_attack / doom_goto: up to 6 s of game time per call */
-  maxAutoTics: 210,
+  /** doom_attack / doom_goto: up to 10 s of game time per call */
+  maxAutoTics: 350,
   /** ~14 minutes of game time per session */
   maxSessionTics: 30_000,
   maxCaptionLength: 140,
@@ -188,7 +188,7 @@ const autoTics = (seconds: number | undefined, dflt: number) =>
 
 /** Assisted: aim at and shoot the target (or the nearest visible enemy), then the next one, for up to max_seconds. */
 export async function autoAttack(id: string, opts: { targetId?: number; maxSeconds?: number; caption?: string }): Promise<Result> {
-  return advance("doom_attack", id, autoTics(opts.maxSeconds, 3), (engine, sink) => attack(engine, sink, { targetId: opts.targetId }), opts.caption, "attack");
+  return advance("doom_attack", id, autoTics(opts.maxSeconds, 5), (engine, sink) => attack(engine, sink, { targetId: opts.targetId }), opts.caption, "attack");
 }
 
 export type GotoRequest =
@@ -204,7 +204,7 @@ export async function autoGoto(id: string, req: GotoRequest, opts: { use?: boole
   return advance(
     "doom_goto",
     id,
-    autoTics(opts.maxSeconds, 4),
+    autoTics(opts.maxSeconds, 8),
     (engine, sink, visited) => {
       const target: GotoTarget =
         "interactive_id" in req
