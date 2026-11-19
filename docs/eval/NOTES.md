@@ -131,10 +131,41 @@ A server-side autopilot with the free bot's rules (fight what's in range, pick u
 - Most calls run the full 10 s. Server time was about 0.7 s per call locally.
 - The middle of the skill-3 run spent about 90 s of game exploring before going back to doors it had skipped, so goal `exit` isn't a straight line to the exit.
 
+### Claude with `doom_autoplay` (label `autoplay-v1`, 2026-11-19)
+
+Same setup as `assist-v2` (Opus 5.5, medium effort, skill 3, perception `both`, budget 50 actions, $2 cap per run), on production at `5eee03f`, with all the tools available.
+
+| | Exit | Actions | Game per action | Kills | Damage taken | Cost |
+|---|---|---|---|---|---|---|
+| `assist-v2` (no autoplay) | 2 of 2 | 39 and 42 | ~1.5 s | 12 and 12 | 59, 74 | $0.68, $0.69 |
+| `autoplay-v1` | **2 of 2** | **23 and 43** | **8.0 s and 6.2 s** | 12 and 13 | 87, 87 | **$0.41**, $0.90 |
+
+- Each action now plays 6–8 s of game against about 5 s of wall time per action, so the viewer has something to play at all times instead of about a quarter of the time.
+- Claude used `doom_autoplay` for 9 of 23 and 13 of 43 actions, mostly with `max_seconds: 20`. It took over with `doom_goto`, `doom_act` and `doom_attack` for the rest: finishing off an imp, picking up items, and doors autoplay had given up on.
+- The transcripts keep only the first 600 characters of each result, so the autoplay result lines were recovered by replaying Claude's calls locally. The game is deterministic, and both replays ended exactly where the runs did.
+- **Both runs' first call went from 100 to 23 health.** Autoplay only checked health between fights, and a fight at skill 3 lost 77 in one go. Claude then spent 7–8 actions recovering.
+- Its `explore` ran for the whole 20 s without looking for the exit or items on the way, and it gave up on doors it had already been through, although doors close behind you and the way on can be through one again.
+
+Fixes after this run, checked with the autoplay-only bot (direct calls, no server):
+
+- Hands back during a fight, not just between fights: below 50 health, or after losing 35 in one call (20 if the call started below 50). The first call at skill 3 now stops at 59 instead of 23.
+- Explores in 3-second slices, so the exit, items and doors that come into view are picked up.
+- When everything reachable is explored: any closed door it can reach, also through other closed doors, with unexplored space behind it first, then doors not walked through, then the one walked through longest ago. A door isn't retried within 20 s.
+- An exit that didn't end the level, and items it couldn't reach, are retried after 20 s instead of never (exit) or every call (items).
+- Fixed a crash when an explore slice ended with an empty route.
+
+| Skill | Calls to the exit (10 s calls) | With 20 s calls |
+|---|---|---|
+| 2 | 4 | 2 |
+| 3 | 27 (1 death) | 14 (1 death) |
+
+The skill-3 deaths are the bot calling autoplay again after the handback; Claude wouldn't have to.
+
 ## Spend
 
 - About $30 before the assisted runs: about $20 for the v2 matrix, $4.78 for the two long games, and about $5 for probes, v1 and two v1 runs lost to a harness bug (fixed).
 - Eval harness: parallel runs now share one API client, so they no longer race to refresh the login (the lost third run above).
 - `assist-v2`: $1.37 (2 runs).
 - Assisted runs: $8.09 ($2.06 for the two 50-action runs, $6.03 for the long run). Total so far: about $38, plus $1.37 for `assist-v2`: about $39.4.
+- `autoplay-v1`: $1.30 (2 runs). Total: about $40.7.
 - Run cost scales faster than linearly with the action budget, since every request re-reads the growing history.

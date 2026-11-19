@@ -123,6 +123,8 @@ export function stopReason(start: PlayerState, s: PlayerState): string | null {
 export interface AttackOptions {
   /** Enemy id to attack first (from state.enemies). Default: the nearest visible enemy. */
   targetId?: number;
+  /** Stop when health falls below this (doom_autoplay's hand-back point). */
+  minHealth?: number;
 }
 
 /** Turns to the target, fires whenever it's in the crosshair, and moves on to the next visible enemy after a kill. */
@@ -160,6 +162,10 @@ export function attack(engine: Engine, sink: TicSink, opts: AttackOptions = {}):
     }
     if (start.health - s.health >= HEAVY_DAMAGE) {
       reason = `taking heavy damage (health ${s.health})`;
+      break;
+    }
+    if (opts.minHealth !== undefined && s.health < opts.minHealth) {
+      reason = `health is low (${s.health})`;
       break;
     }
     if (MELEE.has(s.weapon) && !MELEE.has(start.weapon)) {
@@ -235,6 +241,8 @@ export interface GotoOptions {
   doorsOpened?: number;
   /** Stop when an enemy that wasn't visible at the start comes into sight (default true). */
   stopOnEnemy?: boolean;
+  /** Stop when health falls below this, whatever the cause (doom_autoplay's hand-back point). */
+  minHealth?: number;
 }
 
 interface Plan {
@@ -320,6 +328,25 @@ function planTarget(engine: Engine, lines: MapLine[], grid: NavGrid, p: PlayerSt
 }
 
 /** Plans a route to the target and walks it at running speed, opening doors and pressing switches at the end. */
+/** Closed doors the player can walk up to and open (locked ones only with the key): unexplored behind them first, then the nearest. */
+function closedDoors(engine: Engine, lines: MapLine[], grid: NavGrid, start: PlayerState, visited: Set<string>, planGrid = grid) {
+  return nearbyInteractives(lines, start, 3000, 40)
+    .filter((i) => (i.kind === "door" || (i.kind === "locked_door" && start.keys.some((k) => k.startsWith(i.key ?? "?")))) && i.state === "closed")
+    .flatMap((i) => {
+      const p = planTarget(engine, lines, planGrid, start, { kind: "interactive", id: i.id });
+      if (typeof p === "string" || findPath(grid, { x: start.x, y: start.y }, p.goal)?.partial !== false) return [];
+      return [{ ...i, fresh: !!p.through && !visited.has(cellKey(p.through.x, p.through.y)) }];
+    })
+    .sort((a, b) => Number(b.fresh) - Number(a.fresh) || a.distance - b.distance);
+}
+
+/** For doom_autoplay: every closed door reachable from here, also through other closed doors (doom_goto opens those on the way). */
+export function reachableDoors(engine: Engine, visited: Set<string>) {
+  const lines = engine.getLines();
+  const p = engine.getState();
+  return closedDoors(engine, lines, navGrid(engine, lines, new Set(openableDoors(lines, p).keys())), p, visited, navGrid(engine, lines));
+}
+
 export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: GotoOptions = {}): string {
   const use = opts.use ?? true;
   const stopOnEnemy = opts.stopOnEnemy ?? true;
@@ -337,15 +364,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   if (!path && target.kind === "explore") {
     // Everything reachable has been seen: the rest is behind closed doors. Say which ones we can get to.
     // Doors with unexplored space behind them first, then the nearest.
-    const doors = nearbyInteractives(lines, start, 3000, 40)
-      .filter((i) => (i.kind === "door" || (i.kind === "locked_door" && start.keys.some((k) => k.startsWith(i.key ?? "?")))) && i.state === "closed")
-      .flatMap((i) => {
-        const p = planTarget(engine, lines, grid, start, { kind: "interactive", id: i.id });
-        if (typeof p === "string" || findPath(grid, { x: start.x, y: start.y }, p.goal)?.partial !== false) return [];
-        return [{ ...i, fresh: !!p.through && !target.visited.has(cellKey(p.through.x, p.through.y)) }];
-      })
-      .sort((a, b) => Number(b.fresh) - Number(a.fresh) || a.distance - b.distance)
-      .slice(0, 3);
+    const doors = closedDoors(engine, lines, grid, start, target.visited).slice(0, 3);
     return doors.length
       ? `goto: everything reachable from here is explored. Closed doors you can reach: ${doors.map((d) => `id ${d.id} (${d.distance} units${d.fresh ? ", unexplored behind it" : ", been through it"})`).join(", ")}. doom_goto(interactive_id=${doors[0]!.id}) opens it and walks through.`
       : "goto: everything reachable from here is explored, and no closed door is reachable. Look for a lift, a switch, or a key in state.interactives and nearby_items.";
@@ -390,6 +409,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
     // Stop when attacked. Damage from the floor (nukage, slime) has no attacker: keep going, the route leads out.
     const hurt = s.health < lastHealth;
     lastHealth = s.health;
+    if (opts.minHealth !== undefined && s.health < opts.minHealth) return `health is low (${s.health})`;
     if (hurt && s.attackerAngle !== null) return `took damage (health ${s.health}, attacked from ${describeTurn(s.attackerAngle)})`;
     if (s.health < 25 && hurt) return `health is low (${s.health}), from the floor`;
     if (stopOnEnemy && !onLift) {
@@ -473,7 +493,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
   const s = engine.getState();
   if (!arrived) {
     if (!reason) {
-      const last = wps[wps.length - 1]!;
+      const last = wps[wps.length - 1] ?? s;
       reason = target.kind === "explore" ? `time's up (explored ${legs} new area${legs === 1 ? "" : "s"})` : `time's up, ${Math.round(Math.hypot(last.x - s.x, last.y - s.y))} units still to go`;
     }
     return `goto ${plan.label}: stopped: ${reason}`;
@@ -517,7 +537,7 @@ export function goto(engine: Engine, sink: TicSink, target: GotoTarget, opts: Go
       if (doorState(engine.getLines()[plan.useLine.index]!) === "open") {
         // Walk through while it's open (doors close again after about 4 seconds).
         if (!plan.through || sink.left() <= 0) return `goto: ${where} and opened it; walk through now`;
-        const r = goto(engine, sink, { kind: "position", x: plan.through.x, y: plan.through.y }, { use: false, stopOnEnemy });
+        const r = goto(engine, sink, { kind: "position", x: plan.through.x, y: plan.through.y }, { use: false, stopOnEnemy, minHealth: opts.minHealth });
         if (r.startsWith("goto: reached")) return `goto: ${where}, opened it and walked through`;
         return `goto: ${where} and opened it; walking through: ${r.replace(/^goto (\([^)]*\))?:? ?/, "")}`;
       }
